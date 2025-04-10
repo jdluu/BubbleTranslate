@@ -1,71 +1,66 @@
-console.log("BubbleTranslate: Content Script Loaded!"); // Log when injected
-
-// Listen for messages from the background script
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-	console.log("BubbleTranslate: Message received in content script.");
-	// console.log("Sender:", sender); // Background script doesn't have a tab context here
-	console.log("Request:", request);
-
-	if (request.action === "triggerPageAnalysis") {
-		console.log("BubbleTranslate: 'triggerPageAnalysis' action received.");
-
-		// --- MVP: Find images and send their URLs back to background ---
-		const images = findPotentialMangaImages();
-		console.log(`BubbleTranslate: Found ${images.length} potential images.`);
-
-		images.forEach((img) => {
-			// Send each image URL to the background script for OCR/Translation
-			console.log(
-				`BubbleTranslate: Sending image URL to background: ${img.src}`
-			);
-			chrome.runtime.sendMessage({ action: "processImage", imageUrl: img.src });
-			// NOTE: We are not waiting for a response from the background for each image in this simple MVP
-		});
-		// ----------------------------------------------------------------
-
-		// Send a response back to the background script immediately
-		// confirming we started processing.
-		sendResponse({ status: "processingImages", foundCount: images.length });
-
-		// Return true if you might use sendResponse asynchronously later.
-		// Since we find images and send messages synchronously here, it's not strictly required.
-		// return true;
-	} else {
-		console.log(
-			"BubbleTranslate Content Script: Received unknown action:",
-			request.action
-		);
-	}
-});
-
 /**
  * Finds potential manga/comic images on the page.
  * MVP Implementation: Finds all <img> tags larger than a certain size.
  * @returns {HTMLImageElement[]} An array of image elements.
  */
 function findPotentialMangaImages() {
-	console.log("BubbleTranslate: Searching for potential images...");
+	console.log("BubbleTranslate: --- Starting Image Search ---");
 	const allImages = document.querySelectorAll("img");
 	const potentialImages = [];
-	const minWidth = 300; // Adjust minimum width as needed
-	const minHeight = 400; // Adjust minimum height as needed
+	const minWidth = 300; // Minimum width threshold
+	const minHeight = 400; // Minimum height threshold
 
-	allImages.forEach((img) => {
-		// Check naturalWidth/Height if available (better for scaled images),
-		// otherwise fallback to offsetWidth/Height or width/height attributes.
-		const width = img.naturalWidth || img.offsetWidth || img.width;
-		const height = img.naturalHeight || img.offsetHeight || img.height;
+	console.log(
+		`BubbleTranslate: Found ${allImages.length} total <img> tags. Checking dimensions...`
+	);
 
+	allImages.forEach((img, index) => {
+		// Try to get dimensions. naturalWidth/Height are best if available.
+		const width =
+			img.naturalWidth ||
+			img.offsetWidth ||
+			parseInt(img.getAttribute("width")) ||
+			0;
+		const height =
+			img.naturalHeight ||
+			img.offsetHeight ||
+			parseInt(img.getAttribute("height")) ||
+			0;
+
+		// Log dimensions for *every* image for debugging
+		console.log(
+			`BubbleTranslate: Image[${index}] | Width: ${width}, Height: ${height} | Src: ${img.src.substring(
+				0,
+				100
+			)}...`
+		); // Log dimensions and partial src
+
+		// Apply the filter
 		if (width >= minWidth && height >= minHeight) {
-			// Basic filtering logic (can be improved later)
-			// Ensure src is not empty and potentially check format if needed
-			if (img.src && img.src.startsWith("http")) {
-				// Avoid data URIs initially? or allow?
+			// Optionally add more checks (e.g., ignore tiny placeholders)
+			if (
+				img.src &&
+				(img.src.startsWith("http") || img.src.startsWith("data:"))
+			) {
+				// Allow http(s) and data URIs
+				console.log(
+					`%cBubbleTranslate: ---> Image[${index}] MET criteria! Adding.`,
+					"color: green; font-weight: bold;"
+				); // Highlight matches
 				potentialImages.push(img);
+			} else {
+				console.log(
+					`BubbleTranslate: ---> Image[${index}] dimensions OK, but src invalid/missing.`
+				);
 			}
+		} else {
+			// Optional log for rejected images (can be noisy)
+			// console.log(`BubbleTranslate: ---> Image[${index}] rejected (dimensions too small).`);
 		}
 	});
+
+	console.log(
+		`BubbleTranslate: --- Finished Image Search. Found ${potentialImages.length} potential images meeting criteria. ---`
+	);
 	return potentialImages;
 }
-
-console.log("BubbleTranslate: Content Script listener added.");
