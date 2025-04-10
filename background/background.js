@@ -1,6 +1,9 @@
 console.log("BubbleTranslate: Background Service Worker Started.");
 
 // --- Configuration ---
+// --- Add Cache Map ---
+const translationCache = new Map();
+// ---------------------
 
 // --- Event Listeners ---
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -10,6 +13,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 	if (request.action === "startTranslation") {
 		console.log("BubbleTranslate: 'startTranslation' action received.");
+		// Optional: Clear cache when a new full translation is requested?
+		// translationCache.clear();
+		// console.log("BubbleTranslate: Cache cleared on new translation request.");
 		getActiveTabAndSendMessage(1);
 		sendResponse({
 			status: "received",
@@ -24,37 +30,58 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 		// We have the sender info here, which includes the tab ID
 		if (sender.tab && sender.tab.id) {
 			const tabId = sender.tab.id;
-			// Call the async function to handle OCR and Translation
-			handleImageProcessing(request.imageUrl, tabId);
+			// Call the function to handle OCR/Translation/Caching
+			handleImageProcessing(request.imageUrl, tabId); // Now includes caching
 		} else {
 			console.error(
 				"BubbleTranslate: Received 'processImage' but sender tab ID is missing."
 			);
 		}
-
 		// No synchronous response needed back to content script for this message
-		// We will send results back later using chrome.tabs.sendMessage
 	} else {
 		console.log("BubbleTranslate: Received unknown action:", request.action);
 	}
 
-	// Return true if you might use sendResponse asynchronously *within this listener*.
-	// We return true here mainly because getActiveTabAndSendMessage uses setTimeout.
+	// Return true because async operations might happen
 	return true;
 });
 
 console.log("BubbleTranslate: Background message listener added.");
 
-// --- REVISED Image Processing Logic ---
+// --- REVISED Image Processing Logic with Cache ---
 async function handleImageProcessing(imageUrl, tabId) {
 	console.log(
-		`BubbleTranslate: Starting processing for image - ${imageUrl.substring(
-			0,
-			60
-		)}...`
+		`BubbleTranslate: Handling image - ${imageUrl.substring(0, 60)}...`
 	);
 
-	// 1. Get API Key AND Target Language from storage first
+	// --- Step 1: Check Cache ---
+	if (translationCache.has(imageUrl)) {
+		const cachedTranslation = translationCache.get(imageUrl);
+		console.log(
+			`   CACHE HIT for ${imageUrl.substring(0, 60)}... Sending cached result.`
+		);
+		chrome.tabs
+			.sendMessage(tabId, {
+				action: "displayTranslation",
+				originalImageUrl: imageUrl,
+				translatedText: cachedTranslation,
+			})
+			.catch((e) =>
+				console.warn(
+					`   Error sending cached displayTranslation message: ${e.message}`
+				)
+			);
+		return; // Stop processing, already sent cached result
+	}
+	console.log(
+		`   CACHE MISS for ${imageUrl.substring(
+			0,
+			60
+		)}... Proceeding with API calls.`
+	);
+	// --------------------------
+
+	// 2. Get API Key AND Target Language from storage first
 	chrome.storage.local.get(["apiKey", "targetLang"], async (items) => {
 		// Fetch both keys
 		if (chrome.runtime.lastError) {
@@ -88,7 +115,7 @@ async function handleImageProcessing(imageUrl, tabId) {
 			`BubbleTranslate: Using API Key (loaded) and Target Language: ${targetLangFromStorage}`
 		);
 
-		// 2. NOW, perform the processing INSIDE this callback
+		// 3. NOW, perform the processing INSIDE this callback
 		try {
 			console.log(`   Fetching image data for ${imageUrl.substring(0, 60)}...`);
 			const response = await fetch(imageUrl);
@@ -99,6 +126,7 @@ async function handleImageProcessing(imageUrl, tabId) {
 			}
 			const imageBlob = await response.blob();
 			const base64ImageData = await blobToBase64(imageBlob);
+			// Remove the "data:image/...;base64," prefix required by Vision API's 'content' field
 			const cleanBase64 = base64ImageData.split(",")[1];
 			console.log(
 				`   Image data fetched (Base64 length: ${cleanBase64.length})`
@@ -110,7 +138,7 @@ async function handleImageProcessing(imageUrl, tabId) {
 				console.log(
 					`   No text found by OCR for ${imageUrl.substring(0, 60)}...`
 				);
-				return;
+				return; // Skip translation if no text
 			}
 			console.log(`   OCR Result: "${ocrText.substring(0, 100)}..."`);
 
@@ -127,7 +155,7 @@ async function handleImageProcessing(imageUrl, tabId) {
 						60
 					)}...`
 				);
-				return;
+				return; // Skip sending if translation fails
 			}
 			console.log(
 				`   Translation Result [${targetLangFromStorage}]: "${translatedText.substring(
@@ -136,14 +164,21 @@ async function handleImageProcessing(imageUrl, tabId) {
 				)}..."`
 			); // Log target lang
 
-			// Send result back to the content script
+			// --- Step 4: Store result in Cache ---
+			console.log(
+				`   Storing result in cache for ${imageUrl.substring(0, 60)}...`
+			);
+			translationCache.set(imageUrl, translatedText);
+			// -------------------------------------
+
+			// 5. Send result back to the content script
 			console.log(
 				`   Sending translation back to content script (tab ${tabId})`
 			);
 			chrome.tabs
 				.sendMessage(tabId, {
 					action: "displayTranslation",
-					originalImageUrl: imageUrl,
+					originalImageUrl: imageUrl, // Still send original URL for reference
 					translatedText: translatedText,
 				})
 				.catch((e) =>
@@ -164,6 +199,8 @@ async function handleImageProcessing(imageUrl, tabId) {
 		}
 	}); // --- End of chrome.storage.local.get callback ---
 }
+
+// (Keep callVisionApi, callTranslateApi, blobToBase64, sendProcessingError, getActiveTabAndSendMessage functions as they were)
 // --- REVISED Google Cloud Vision API Call Function ---
 async function callVisionApi(base64ImageData, apiKey) {
 	// Added apiKey parameter
@@ -293,7 +330,6 @@ function sendProcessingError(tabId, imageUrl, errorMessage) {
 }
 
 // --- Function to get active tab and send trigger message ---
-// (Keep the getActiveTabAndSendMessage function from the previous step here)
 function getActiveTabAndSendMessage(attempt) {
 	const maxAttempts = 3;
 	const retryDelay = 100;
