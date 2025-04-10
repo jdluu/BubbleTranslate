@@ -4,7 +4,7 @@
 	"version": "0.1.0",
 	"description": "Live translates text within manga and comic images.",
 
-	"permissions": ["activeTab", "scripting", "storage"],
+	"permissions": ["activeTab", "scripting", "storage", "tabs"],
 
 	"action": {
 		"default_popup": "popup/popup.html",
