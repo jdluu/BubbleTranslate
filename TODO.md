@@ -2,19 +2,19 @@
 
 ## Phase 1: MVP (Minimum Viable Product)
 
-- [ ] **Project Setup:**
+- [x] **Project Setup:**
   - [x] Initialize Git repository (`.git`)
   - [x] Create `.gitignore` file
   - [x] Create `README.md` (this file)
   - [x] Create `TODO.md` (this file)
   - [x] Create basic file structure (`manifest.json`, `icons/`, `popup/`, `content/`, `background/`)
   - [x] Create placeholder icons (16, 48, 128 px)
-- [ ] **Manifest (`manifest.json`):**
-  - [ ] Define `manifest_version: 3`, `name: BubbleTranslate`, `version`, `description`
-  - [ ] Request necessary `permissions` (`activeTab`, `scripting`, potentially `storage`)
-  - [ ] Define `action` (popup: `popup/popup.html`, default icons)
-  - [ ] Define `content_scripts` (matching URLs, `content/content.js`, `content/content.css`)
-  - [ ] Define `background` service worker (`background/background.js`)
+- [x] **Manifest (`manifest.json`):**
+  - [x] Define `manifest_version: 3`, `name: BubbleTranslate`, `version`, `description`
+  - [x] Request necessary `permissions` (`activeTab`, `scripting`, potentially `storage`)
+  - [x] Define `action` (popup: `popup/popup.html`, default icons)
+  - [x] Define `content_scripts` (matching URLs, `content/content.js`, `content/content.css`)
+  - [x] Define `background` service worker (`background/background.js`)
 - [ ] **Popup UI (`popup/`):**
   - [ ] Create basic `popup.html` structure
   - [ ] Add a "Translate Page" button to `popup.html`
