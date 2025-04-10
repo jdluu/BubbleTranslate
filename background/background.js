@@ -2,9 +2,6 @@ console.log("BubbleTranslate: Background Service Worker Started.");
 
 // --- Configuration ---
 
-// Target language for translation (MVP: Hardcoded to English)
-const TARGET_LANGUAGE = "en";
-
 // --- Event Listeners ---
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	console.log("BubbleTranslate: Message received.");
@@ -57,38 +54,41 @@ async function handleImageProcessing(imageUrl, tabId) {
 		)}...`
 	);
 
-	// 1. Get API Key from storage first
-	chrome.storage.local.get({ apiKey: null }, async (items) => {
+	// 1. Get API Key AND Target Language from storage first
+	chrome.storage.local.get(["apiKey", "targetLang"], async (items) => {
+		// Fetch both keys
 		if (chrome.runtime.lastError) {
 			console.error(
-				"BubbleTranslate: Error getting API key from storage:",
+				"BubbleTranslate: Error getting settings from storage:",
 				chrome.runtime.lastError
 			);
 			sendProcessingError(
 				tabId,
 				imageUrl,
-				"Failed to retrieve API key from storage."
+				"Failed to retrieve settings from storage."
 			);
 			return;
 		}
 
 		const apiKeyFromStorage = items.apiKey;
+		// Use saved language, default to 'en' if somehow not set
+		const targetLangFromStorage = items.targetLang || "en";
 
 		if (!apiKeyFromStorage) {
-			console.error(
-				"BubbleTranslate: API Key not found in storage. Please set it on the options page."
-			);
+			console.error("BubbleTranslate: API Key not found in storage.");
 			sendProcessingError(
 				tabId,
 				imageUrl,
 				"API Key not configured. Please set it via extension options."
 			);
-			return; // Stop processing if no key
+			return;
 		}
 
-		console.log("BubbleTranslate: API Key retrieved from storage.");
+		console.log(
+			`BubbleTranslate: Using API Key (loaded) and Target Language: ${targetLangFromStorage}`
+		);
 
-		// 2. NOW, perform the processing INSIDE this callback, using the retrieved key
+		// 2. NOW, perform the processing INSIDE this callback
 		try {
 			console.log(`   Fetching image data for ${imageUrl.substring(0, 60)}...`);
 			const response = await fetch(imageUrl);
@@ -101,7 +101,7 @@ async function handleImageProcessing(imageUrl, tabId) {
 			const base64ImageData = await blobToBase64(imageBlob);
 			const cleanBase64 = base64ImageData.split(",")[1];
 			console.log(
-				`   Image data fetched and converted to Base64 (length: ${cleanBase64.length})`
+				`   Image data fetched (Base64 length: ${cleanBase64.length})`
 			);
 
 			// Call OCR, passing the retrieved key
@@ -114,12 +114,12 @@ async function handleImageProcessing(imageUrl, tabId) {
 			}
 			console.log(`   OCR Result: "${ocrText.substring(0, 100)}..."`);
 
-			// Call Translation, passing the retrieved key
+			// Call Translation, passing retrieved key AND language
 			const translatedText = await callTranslateApi(
 				ocrText,
-				TARGET_LANGUAGE,
+				targetLangFromStorage,
 				apiKeyFromStorage
-			); // Pass key
+			); // Pass lang & key
 			if (!translatedText) {
 				console.error(
 					`   Translation failed for OCR text of ${imageUrl.substring(
@@ -130,8 +130,11 @@ async function handleImageProcessing(imageUrl, tabId) {
 				return;
 			}
 			console.log(
-				`   Translation Result: "${translatedText.substring(0, 100)}..."`
-			);
+				`   Translation Result [${targetLangFromStorage}]: "${translatedText.substring(
+					0,
+					100
+				)}..."`
+			); // Log target lang
 
 			// Send result back to the content script
 			console.log(
@@ -160,12 +163,7 @@ async function handleImageProcessing(imageUrl, tabId) {
 			);
 		}
 	}); // --- End of chrome.storage.local.get callback ---
-
-	// Note: handleImageProcessing itself doesn't need to be async anymore,
-	// as the async work happens inside the storage.get callback.
-	// Or keep it async if needed for other reasons, it doesn't hurt.
-} // --- End of handleImageProcessing ---
-
+}
 // --- REVISED Google Cloud Vision API Call Function ---
 async function callVisionApi(base64ImageData, apiKey) {
 	// Added apiKey parameter
