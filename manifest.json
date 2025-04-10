@@ -4,19 +4,10 @@
 	"version": "0.1.0",
 	"description": "Live translates text within manga and comic images.",
 
-	"permissions": [
-		"activeTab", // Access the currently active tab
-		"scripting", // Allows injecting scripts into pages
-		"storage" // Optional: To save user settings or API keys
-		// Potentially "contextMenus" if you want right-click activation
-		// You might need broader host permissions later, like "<all_urls>",
-		// to access image data across different sites, but start specific if possible.
-		// Accessing external APIs (OCR, Translation) doesn't usually require a permission here,
-		// but you'll handle it in your background script.
-	],
+	"permissions": ["activeTab", "scripting", "storage"],
 
 	"action": {
-		"default_popup": "popup.html", // HTML file for the popup when clicking the extension icon
+		"default_popup": "popup/popup.html",
 		"default_icon": {
 			"16": "icons/icon16.png",
 			"48": "icons/icon48.png",
@@ -32,14 +23,14 @@
 
 	"content_scripts": [
 		{
-			"matches": ["<all_urls>"], // Or be more specific, e.g., ["*://*.manga-site.com/*"]
-			"js": ["content.js"],
-			"css": ["styles.css"] // Optional: for styling overlays
-			// "run_at": "document_idle" // Or "document_start", "document_end"
+			"matches": ["<all_urls>"],
+			"js": ["content/content.js"],
+			"css": ["content/content.css"],
+			"run_at": "document_idle"
 		}
 	],
 
 	"background": {
-		"service_worker": "background.js" // For handling API calls, core logic
+		"service_worker": "background/background.js"
 	}
 }
