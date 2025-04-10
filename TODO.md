@@ -15,29 +15,29 @@
   - [x] Define `action` (popup: `popup/popup.html`, default icons)
   - [x] Define `content_scripts` (matching URLs, `content/content.js`, `content/content.css`)
   - [x] Define `background` service worker (`background/background.js`)
-- [ ] **Popup UI (`popup/`):**
-  - [ ] Create basic `popup.html` structure
-  - [ ] Add a "Translate Page" button to `popup.html`
-  - [ ] Basic styling in `popup.css`
-  - [ ] Implement `popup.js` to send a message to background/content script on button click
-- [ ] **Content Script (`content/`):**
-  - [ ] Implement `content.js` listener for messages from popup/background
-  - [ ] **Image Detection:** Implement basic logic in `content.js` to find `<img>` elements larger than a set size.
-  - [ ] Send found image URLs to `background.js`.
-  - [ ] **Overlay Display:** Implement logic in `content.js` to create simple overlay elements near images.
-  - [ ] Add basic styling for overlays in `content.css`.
-  - [ ] Implement message listener in `content.js` to receive translations from `background.js` and update overlays.
-- [ ] **Background Script (`background/`):**
-  - [ ] Implement `background.js` listener for messages (from popup and content script).
-  - [ ] **API Integration:** Implement `Workspace` calls to Google Cloud Vision AI (OCR).
-  - [ ] **API Integration:** Implement `Workspace` calls to Google Cloud Translation API (Translate text from OCR).
-  - [ ] **API Key Management:** Add placeholder/warning for API Keys (DO NOT COMMIT KEYS).
-  - [ ] Send translation results back to the correct `content.js` tab.
-  - [ ] Handle basic error states from API calls.
-- [ ] **Testing:**
-  - [ ] Load extension unpacked in Chrome.
-  - [ ] Test on various pages with images/manga panels.
-  - [ ] Debug using DevTools for popup, content script, and service worker.
+- [x] **Popup UI (`popup/`):**
+  - [x] Create basic `popup.html` structure
+  - [x] Add a "Translate Page" button to `popup.html`
+  - [x] Basic styling in `popup.css`
+  - [x] Implement `popup.js` to send a message to background/content script on button click
+- [x] **Content Script (`content/`):**
+  - [x] Implement `content.js` listener for messages from popup/background
+  - [x] **Image Detection:** Implement basic logic in `content.js` to find `<img>` elements larger than a set size.
+  - [x] Send found image URLs to `background.js`.
+  - [x] **Overlay Display:** Implement logic in `content.js` to create simple overlay elements near images.
+  - [x] Add basic styling for overlays in `content.css`.
+  - [x] Implement message listener in `content.js` to receive translations from `background.js` and update overlays.
+- [x] **Background Script (`background/`):**
+  - [x] Implement `background.js` listener for messages (from popup and content script).
+  - [x] **API Integration:** Implement `Workspace` calls to Google Cloud Vision AI (OCR).
+  - [x] **API Integration:** Implement `Workspace` calls to Google Cloud Translation API (Translate text from OCR).
+  - [x] **API Key Management:** Add placeholder/warning for API Keys (DO NOT COMMIT KEYS).
+  - [x] Send translation results back to the correct `content.js` tab.
+  - [x] Handle basic error states from API calls.
+- [x] **Testing:**
+  - [x] Load extension unpacked in Chrome.
+  - [x] Test on various pages with images/manga panels.
+  - [x] Debug using DevTools for popup, content script, and service worker.
 
 ## Phase 2: Core Improvements
 
