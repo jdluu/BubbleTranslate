@@ -41,21 +41,21 @@
 
 ## Phase 2: Core Improvements
 
-- [ ] **User Settings:**
-  - [ ] Implement Target Language Selection UI (e.g., dropdown in popup).
-  - [ ] Pass selected target language to Translation API call.
-  - [ ] (Optional) Create basic Options page (`options/` files).
-  - [ ] Use `chrome.storage.local` or `sync` to save user's target language preference.
+- [x] **User Settings:**
+  - [x] Implement Target Language Selection UI (e.g., dropdown in popup).
+  - [x] Pass selected target language to Translation API call.
+  - [x] (Optional) Create basic Options page (`options/` files).
+  - [x] Use `chrome.storage.local` or `sync` to save user's target language preference.
 - [ ] **Interaction:**
   - [ ] Implement Specific Area Selection (e.g., user draws a box on the page).
   - [ ] Capture selected area as image data (e.g., using Canvas).
   - [ ] Send selected image data (instead of URL) to background for processing.
-- [ ] **Performance:**
-  - [ ] Implement Caching mechanism (in-memory or `chrome.storage.local`) for OCR/Translation results on the current page.
-- [ ] **UX:**
-  - [ ] Implement basic Overlay Customization options (e.g., font size in options/popup).
-  - [ ] Store overlay preferences in `chrome.storage`.
-  - [ ] Apply custom styles to overlays in `content.js`.
+- [x] **Performance:**
+  - [x] Implement Caching mechanism (in-memory or `chrome.storage.local`) for OCR/Translation results on the current page.
+- [x] **UX:**
+  - [x] Implement basic Overlay Customization options (e.g., font size in options/popup).
+  - [x] Store overlay preferences in `chrome.storage`.
+  - [x] Apply custom styles to overlays in `content.js`.
 
 ## Phase 3: Robustness & Flexibility
 
