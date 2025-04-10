@@ -1,0 +1,53 @@
+# --- Operating System Files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Log Files ---
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lcov.info
+
+# --- Runtime Data ---
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# --- Dependency Directories (Node.js) ---
+# If you use npm or yarn for development tools, linters, bundlers, etc.
+node_modules/
+
+# --- Build Output / Distribution Folders ---
+# If you use a build process (e.g., webpack, parcel)
+dist/
+build/
+out/
+
+# --- Packaged Chrome Extension Files ---
+# The final .zip or .crx file for distribution/upload
+*.zip
+*.crx
+
+# --- Editor/IDE Directories and Files ---
+.idea/
+.vscode/  # Can comment out if your team shares common VSCode settings
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw? # Vim swap files
+
+# --- Test Coverage ---
+coverage/
+
+# --- Environment Variables / Sensitive Data ---
+# IMPORTANT: Never commit API keys, secrets, or credentials!
+# Use environment variables, a secure backend, or Chrome storage for user-provided keys.
+.env
+.env.*
+!/.env.example # Keep example files
+
+# Add any other project-specific temporary files or directories below
