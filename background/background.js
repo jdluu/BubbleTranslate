@@ -4,54 +4,53 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	// console.log("Sender:", sender); // Optional: Keep for debugging if needed
 	// console.log("Request:", request); // Optional: Keep for debugging if needed
 
+	// Inside the chrome.runtime.onMessage.addListener...
 	if (request.action === "startTranslation") {
 		console.log("BubbleTranslate: 'startTranslation' action received.");
 
 		// --- Logic to trigger the Content Script ---
-		// 1. Find the currently active tab
 		chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+			// Log the direct result of the query
+			console.log("BubbleTranslate: tabs.query result:", tabs);
+
 			// Check if we found an active tab
-			if (tabs.length > 0 && tabs[0].id) {
+			if (tabs && tabs.length > 0 && tabs[0].id) {
+				// Added check for tabs being defined
 				const activeTabId = tabs[0].id;
 				console.log(`BubbleTranslate: Found active tab ID: ${activeTabId}`);
 
-				// 2. Send a message specifically TO that tab's content script
+				// Send message TO content script... (rest of the code inside 'if' is the same)
 				chrome.tabs.sendMessage(
 					activeTabId,
 					{ action: "triggerPageAnalysis" },
 					(response) => {
-						// This callback runs when the content script sends a response
-
+						// ... (rest of sendMessage logic) ...
 						if (chrome.runtime.lastError) {
-							// This error is EXPECTED for now if the content script isn't listening yet
-							// or if the content script wasn't injected on the current page.
 							console.warn(
-								`BubbleTranslate: Could not send message to content script in tab ${activeTabId}. Maybe it's not loaded there? Error: ${chrome.runtime.lastError.message}`
+								`BubbleTranslate: Could not send message to content script in tab ${activeTabId}. Error: ${chrome.runtime.lastError.message}`
 							);
-							// Optionally inform the popup about this failure? More complex.
 							return;
 						}
-
-						// If the content script *does* respond successfully later:
 						console.log(
 							`BubbleTranslate: Received response from content script:`,
 							response
 						);
-						// Update popup? Handle status?
 					}
 				);
 				console.log(
 					`BubbleTranslate: Sent 'triggerPageAnalysis' message to tab ${activeTabId}`
 				);
 			} else {
-				console.error("BubbleTranslate: Could not find active tab.");
-				// Maybe send an error back to the popup?
+				// Log the error more clearly
+				console.error(
+					"BubbleTranslate: Failed to find active tab. Query result was:",
+					tabs
+				);
 			}
 		});
 		// -----------------------------------------
 
-		// Send an immediate response back to the popup to acknowledge receipt.
-		// We do this straight away so the popup knows the request was initially handled.
+		// Send immediate response back to popup... (rest of the code outside query is the same)
 		sendResponse({
 			status: "received",
 			message: "Background script acknowledged startTranslation.",
