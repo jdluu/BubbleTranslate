@@ -1,55 +1,70 @@
+// --- Restore popup.js back to this code ---
+console.log("BubbleTranslate: popup.js script started."); // Log when script initially runs
+
 document.addEventListener("DOMContentLoaded", () => {
+	console.log("BubbleTranslate: DOMContentLoaded event fired."); // Log when DOM is ready
+
 	const translateButton = document.getElementById("translateButton");
-	const statusMessage = document.getElementById("statusMessage"); // Optional
+	const statusMessage = document.getElementById("statusMessage");
+
+	console.log(
+		"BubbleTranslate: Attempting to find button. Found:",
+		translateButton
+	); // Log if button was found
 
 	if (translateButton) {
-		translateButton.addEventListener("click", () => {
-			console.log("BubbleTranslate: Translate button clicked.");
+		console.log("BubbleTranslate: Adding click listener to button."); // Log before adding listener
 
-			// Optional: Provide immediate feedback in the popup
+		translateButton.addEventListener("click", () => {
+			// THIS IS THE LOG WE EXPECT TO SEE WHEN CLICKING
+			console.log("BubbleTranslate: Translate button CLICKED.");
+
 			if (statusMessage) {
 				statusMessage.textContent = "Sending request...";
 			}
-			translateButton.disabled = true; // Prevent double-clicks
+			translateButton.disabled = true;
 
-			// Send a message to the background script to kick off the process
+			console.log(
+				"BubbleTranslate: About to call chrome.runtime.sendMessage..."
+			); // Log right before sending
+
 			chrome.runtime.sendMessage({ action: "startTranslation" }, (response) => {
-				// This callback function runs when the background script
-				// (or another listener) sends a response using sendResponse()
+				console.log("BubbleTranslate: sendMessage callback executed."); // Log when callback runs
 
-				// Check if the runtime is still available (e.g., popup might have closed)
 				if (chrome.runtime.lastError) {
-					console.warn(
-						`BubbleTranslate: Popup message failed - ${chrome.runtime.lastError.message}`
+					// Log the actual error object
+					console.error(
+						`BubbleTranslate: Popup message failed -`,
+						chrome.runtime.lastError
 					);
 					if (statusMessage)
 						statusMessage.textContent = "Error sending request.";
-					// Re-enable button on error if needed, consider popup state
-					// translateButton.disabled = false;
+					// Consider re-enabling button on error: translateButton.disabled = false;
 					return;
 				}
 
-				console.log(
-					"BubbleTranslate: Message sent to background script.",
-					response
-				);
-
-				// Optional: Update status based on response from background
+				console.log("BubbleTranslate: Message response received:", response);
 				if (statusMessage) {
 					if (response && response.status === "received") {
 						statusMessage.textContent = "Processing initiated...";
 					} else {
-						// Might need different handling if background does complex work
 						// statusMessage.textContent = 'Request sent.';
 					}
 				}
-				// Keep button disabled until process is potentially complete or fails
-				// or re-enable here if background response indicates immediate completion/failure
-				// translateButton.disabled = false;
+				// Consider re-enabling button depending on response: translateButton.disabled = false;
 			});
+
+			console.log("BubbleTranslate: chrome.runtime.sendMessage call finished."); // Log after *initiating* send
 		});
+
+		console.log("BubbleTranslate: Click listener ADDED."); // Log after adding listener
 	} else {
 		console.error("BubbleTranslate: Translate button not found in popup.");
 		if (statusMessage) statusMessage.textContent = "Error: Button not found.";
 	}
 });
+
+console.log(
+	"BubbleTranslate: popup.js script finished executing initial code."
+); // Log end of script
+// --- End of code to restore ---
