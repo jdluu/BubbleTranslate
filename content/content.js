@@ -2,17 +2,66 @@
 console.log("BubbleTranslate: Content Script Loaded!");
 // ----------------------------------------------
 
+// --- Global variables for style settings ---
+let overlayStyles = {
+	fontSize: "14px", // Default values
+	textColor: "#FFFFFF",
+	bgColor: "rgba(0, 0, 0, 0.75)",
+};
+
+// --- Function to load settings from storage ---
+function loadStyleSettings() {
+	chrome.storage.local.get(
+		{
+			// Defaults matching options page
+			fontSize: "14",
+			textColor: "#FFFFFF",
+			bgColor: "rgba(0, 0, 0, 0.75)",
+		},
+		(items) => {
+			if (chrome.runtime.lastError) {
+				console.error(
+					"BubbleTranslate: Error loading style settings:",
+					chrome.runtime.lastError
+				);
+				return;
+			}
+			// Update global styles object
+			overlayStyles.fontSize = items.fontSize + "px"; // Add 'px' unit
+			overlayStyles.textColor = items.textColor;
+			overlayStyles.bgColor = items.bgColor;
+			console.log("BubbleTranslate: Style settings loaded:", overlayStyles);
+		}
+	);
+}
+
+// --- Load settings when the script initially runs ---
+loadStyleSettings();
+
+// --- Optional: Listen for storage changes to update styles live ---
+// (More advanced, requires careful handling)
+/*
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local' && (changes.fontSize || changes.textColor || changes.bgColor)) {
+    console.log("BubbleTranslate: Detected style change, reloading settings.");
+    loadStyleSettings();
+  }
+});
+*/
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 	console.log("BubbleTranslate: Message received in content script:", message);
 
 	switch (message.action) {
 		case "triggerPageAnalysis":
 			console.log("BubbleTranslate: 'triggerPageAnalysis' action received.");
+			// Reload styles just in case they changed before trigger
+			loadStyleSettings(); // Ensure styles are fresh before processing
 			let imagesFoundCount = 0; // Keep track of count
 			let processingError = null;
 
 			try {
-				// --- CORRECTED: Call findPotentialMangaImages and loop here ---
+				// --- Call findPotentialMangaImages and loop here ---
 				const images = findPotentialMangaImages(); // Call the existing function
 				imagesFoundCount = images.length; // Store count
 				console.log(
@@ -75,11 +124,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 					});
 				}
 			}
-			// Return true because logic inside try/catch might theoretically be async later,
-			// and sendResponse is in finally. Safer to include.
+			// Return true because loadStyleSettings is async and sendResponse is in finally.
 			return true;
 
-		// --- Cases for displayTranslation and translationError remain the same ---
+		// --- Cases for displayTranslation and translationError ---
 		case "displayTranslation":
 			console.log(
 				`   Received translation for ${message.originalImageUrl.substring(
@@ -87,9 +135,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 					60
 				)}...`
 			);
+			// Pass the loaded styles to the display function
 			displayTranslationOverlay(
 				message.originalImageUrl,
-				message.translatedText
+				message.translatedText,
+				overlayStyles
 			);
 			return false; // Indicate no response needed
 
@@ -100,7 +150,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 					60
 				)}...: ${message.error}`
 			);
-			displayErrorOverlay(message.originalImageUrl, message.error);
+			// Pass styles to error overlay too if you want consistency
+			displayErrorOverlay(
+				message.originalImageUrl,
+				message.error,
+				overlayStyles
+			);
 			return false; // Indicate no response needed
 
 		default:
@@ -111,18 +166,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 	}
 });
 
-// --- NEW FUNCTION to display the translation overlay ---
-function displayTranslationOverlay(imageUrl, translatedText) {
+// --- MODIFIED FUNCTION to display the translation overlay ---
+// Accepts 'styles' object as an argument
+function displayTranslationOverlay(imageUrl, translatedText, styles) {
 	// Find the image element on the page using its src
-	// Need to escape quotes within the querySelector if the URL contains them (unlikely but possible)
 	const escapedUrl = imageUrl.replace(/"/g, '\\"');
 	const imgElement = document.querySelector(`img[src="${escapedUrl}"]`);
 
 	if (imgElement) {
 		console.log(`   Found image element for ${imageUrl.substring(0, 60)}...`);
-
-		// --- Basic Overlay Creation ---
-		// Check if an overlay already exists for this image to prevent duplicates
 		if (imgElement.dataset.translationDisplayed === "true") {
 			console.log(
 				`   Overlay already exists for ${imageUrl.substring(
@@ -133,29 +185,27 @@ function displayTranslationOverlay(imageUrl, translatedText) {
 			return;
 		}
 
-		// Create the overlay div
 		const overlayDiv = document.createElement("div");
 		overlayDiv.textContent = translatedText;
-		overlayDiv.style.position = "absolute"; // Position relative to the nearest positioned ancestor
-		overlayDiv.style.bottom = "10px"; // Position near the bottom of the image
-		overlayDiv.style.left = "10px"; // Position near the left of the image
-		overlayDiv.style.right = "10px"; // Stretch near the right edge
-		overlayDiv.style.backgroundColor = "rgba(0, 0, 0, 0.75)"; // Semi-transparent black background
-		overlayDiv.style.color = "white"; // White text
-		overlayDiv.style.padding = "5px"; // Some padding
-		overlayDiv.style.fontSize = "14px"; // Readable font size
-		overlayDiv.style.zIndex = "9999"; // Ensure it's on top
-		overlayDiv.style.borderRadius = "4px"; // Slightly rounded corners
-		overlayDiv.style.textAlign = "center"; // Center the text
-		overlayDiv.style.pointerEvents = "none"; // Allow clicks to pass through to the image if needed
+
+		// --- Apply styles from the passed 'styles' object ---
+		overlayDiv.style.position = "absolute";
+		overlayDiv.style.bottom = "10px";
+		overlayDiv.style.left = "10px";
+		overlayDiv.style.right = "10px";
+		overlayDiv.style.backgroundColor = styles.bgColor; // Use loaded style
+		overlayDiv.style.color = styles.textColor; // Use loaded style
+		overlayDiv.style.padding = "5px";
+		overlayDiv.style.fontSize = styles.fontSize; // Use loaded style
+		overlayDiv.style.zIndex = "9999";
+		overlayDiv.style.borderRadius = "4px";
+		overlayDiv.style.textAlign = "center";
+		overlayDiv.style.pointerEvents = "none";
+		// --------------------------------------------------
 
 		// --- Positioning Strategy: Wrap the image ---
-		// Get the parent of the image
 		const parent = imgElement.parentNode;
-
-		// Create a wrapper div if it doesn't exist already (or if the parent isn't already a wrapper)
 		let wrapper = parent;
-		// Basic check if parent might already be a wrapper (more robust checks could be added)
 		if (
 			getComputedStyle(parent).position !== "relative" &&
 			getComputedStyle(parent).position !== "absolute" &&
@@ -163,9 +213,8 @@ function displayTranslationOverlay(imageUrl, translatedText) {
 		) {
 			console.log(`   Wrapping image ${imageUrl.substring(0, 60)}...`);
 			wrapper = document.createElement("div");
-			wrapper.style.position = "relative"; // Make the wrapper the positioning context
-			wrapper.style.display = "inline-block"; // Keep layout similar to original image
-			// Move the image inside the wrapper
+			wrapper.style.position = "relative";
+			wrapper.style.display = "inline-block";
 			parent.insertBefore(wrapper, imgElement);
 			wrapper.appendChild(imgElement);
 		} else {
@@ -177,13 +226,11 @@ function displayTranslationOverlay(imageUrl, translatedText) {
 			);
 		}
 
-		// Append the overlay to the wrapper (which is either the new wrapper or the original parent if it was already positioned)
 		wrapper.appendChild(overlayDiv);
-
-		// Mark the image so we don't add another overlay later if the message comes again
 		imgElement.dataset.translationDisplayed = "true";
-
-		console.log(`   Overlay added for ${imageUrl.substring(0, 60)}...`);
+		console.log(
+			`   Overlay added for ${imageUrl.substring(0, 60)}... with custom styles.`
+		);
 	} else {
 		console.warn(
 			`   Could not find image element for ${imageUrl} on the page.`
@@ -191,34 +238,29 @@ function displayTranslationOverlay(imageUrl, translatedText) {
 	}
 }
 
-// --- Optional: Function to display an error ---
-function displayErrorOverlay(imageUrl, errorMessage) {
+// --- MODIFIED FUNCTION to display an error ---
+// Accepts 'styles' object as an argument
+function displayErrorOverlay(imageUrl, errorMessage, styles) {
 	const escapedUrl = imageUrl.replace(/"/g, '\\"');
 	const imgElement = document.querySelector(`img[src="${escapedUrl}"]`);
 	if (imgElement && imgElement.dataset.translationDisplayed !== "true") {
-		// Check if overlay exists
 		const errorDiv = document.createElement("div");
-		errorDiv.textContent = `⚠️ Error`; // Simple error indicator
-		errorDiv.title = errorMessage; // Show full error on hover
+		errorDiv.textContent = `⚠️ Error`;
+		errorDiv.title = errorMessage;
 		errorDiv.style.position = "absolute";
 		errorDiv.style.top = "10px";
 		errorDiv.style.left = "10px";
-		errorDiv.style.backgroundColor = "rgba(255, 0, 0, 0.7)"; // Red background
-		errorDiv.style.color = "white";
+		errorDiv.style.backgroundColor = "rgba(255, 0, 0, 0.7)"; // Keep error red
+		errorDiv.style.color = styles.textColor; // Use custom text color
 		errorDiv.style.padding = "2px 5px";
-		errorDiv.style.fontSize = "12px";
+		errorDiv.style.fontSize = styles.fontSize; // Use custom font size
 		errorDiv.style.zIndex = "10000";
 		errorDiv.style.borderRadius = "4px";
-		errorDiv.style.pointerEvents = "none"; // Allow clicks through
+		errorDiv.style.pointerEvents = "none";
 
-		// Use the same wrapping logic as displayTranslationOverlay
 		const parent = imgElement.parentNode;
 		let wrapper = parent;
-		if (
-			getComputedStyle(parent).position !== "relative" &&
-			getComputedStyle(parent).position !== "absolute" &&
-			getComputedStyle(parent).position !== "fixed"
-		) {
+		if (getComputedStyle(parent).position !== "relative") {
 			wrapper = document.createElement("div");
 			wrapper.style.position = "relative";
 			wrapper.style.display = "inline-block";
@@ -226,10 +268,11 @@ function displayErrorOverlay(imageUrl, errorMessage) {
 			wrapper.appendChild(imgElement);
 		}
 		wrapper.appendChild(errorDiv);
-		imgElement.dataset.translationDisplayed = "true"; // Mark as processed even for error
+		imgElement.dataset.translationDisplayed = "true";
 		console.log(`   Error overlay added for ${imageUrl.substring(0, 60)}...`);
 	}
 }
+
 // (Keep the findPotentialMangaImages function with its detailed logging from the previous step here)
 /**
  * Finds potential manga/comic images on the page...
@@ -280,7 +323,6 @@ function findPotentialMangaImages() {
 				);
 			}
 		}
-		// No need to log rejected ones unless debugging that specifically
 	});
 
 	console.log(
@@ -289,4 +331,5 @@ function findPotentialMangaImages() {
 	return potentialImages;
 }
 
-console.log("BubbleTranslate: Content Script listener added."); // Keep this outside listener
+// (Removed the extra logLoaded() call from the end)
+// --- Message listener setup should happen implicitly by this script running ---
