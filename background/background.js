@@ -1,93 +1,99 @@
 console.log("BubbleTranslate: Background Service Worker Started.");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-	console.log("BubbleTranslate: Message received in background script.");
+	// Log sender info ONCE per message received
+	// For popups, sender.tab is usually undefined, but sender.id (extension ID) and url (popup URL) are present.
+	console.log("BubbleTranslate: Message received.");
+	console.log("Sender:", sender);
+	console.log("Request:", request);
 
 	if (request.action === "startTranslation") {
 		console.log("BubbleTranslate: 'startTranslation' action received.");
-
-		// Call function to get tab and send message, allowing retries
 		getActiveTabAndSendMessage(1); // Start with attempt 1
-
-		// Send immediate response back to popup
 		sendResponse({
 			status: "received",
 			message: "Background script acknowledged startTranslation.",
 		});
 	} else if (request.action === "processImage") {
-		// --- Listener for messages from content.js ---
 		console.log(
 			`BubbleTranslate: Received 'processImage' action for URL: ${request.imageUrl}`
 		);
-		// TODO: Implement OCR and Translation logic here for the received imageUrl
-		// This is where you would call Google Vision API etc.
-
-		// No response needed back to content script for this action (for now)
+		// TODO: Implement OCR and Translation logic here
 	} else {
 		console.log("BubbleTranslate: Received unknown action:", request.action);
 	}
-
-	// Return true if sendResponse might be called asynchronously *within this listener*.
-	// Since we call it synchronously for 'startTranslation' and not at all yet for 'processImage',
-	// it's not strictly needed, but good practice if async responses might be added.
-	return true;
+	return true; // Keep returning true as getActiveTabAndSendMessage uses setTimeout/async callbacks
 });
 
 console.log("BubbleTranslate: Background message listener added.");
 
-// --- Helper function with retry logic ---
+// --- Helper function with retry logic AND MODIFIED QUERY ---
 function getActiveTabAndSendMessage(attempt) {
-	const maxAttempts = 3; // Try up to 3 times
-	const retryDelay = 100; // Wait 100ms between retries
+	const maxAttempts = 3;
+	const retryDelay = 100; // milliseconds
 
-	chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-		console.log(`BubbleTranslate: tabs.query attempt ${attempt} result:`, tabs);
+	// --- MODIFIED QUERY: Removed currentWindow: true ---
+	// Query for any tab that is currently active.
+	chrome.tabs.query({ active: true }, (tabs) => {
+		console.log(
+			`BubbleTranslate: tabs.query({active: true}) attempt ${attempt} result:`,
+			tabs
+		);
 
-		if (tabs && tabs.length > 0 && tabs[0].id) {
-			const activeTabId = tabs[0].id;
-			console.log(
-				`BubbleTranslate: Found active tab ID: ${activeTabId} on attempt ${attempt}`
-			);
+		if (tabs && tabs.length > 0) {
+			// If multiple active tabs found (e.g., one active tab in multiple windows),
+			// we'll just pick the first one for now.
+			// A more robust solution might involve checking tabs[i].lastFocusedWindow but let's start simple.
+			const targetTab = tabs[0];
 
-			chrome.tabs.sendMessage(
-				activeTabId,
-				{ action: "triggerPageAnalysis" },
-				(response) => {
-					if (chrome.runtime.lastError) {
-						console.warn(
-							`BubbleTranslate: Could not send/receive message to/from content script in tab ${activeTabId}. Error: ${chrome.runtime.lastError.message}`
+			if (targetTab && targetTab.id) {
+				// Check if targetTab and its ID exist
+				const activeTabId = targetTab.id;
+				console.log(
+					`BubbleTranslate: Found active tab ID: ${activeTabId} in window ${targetTab.windowId} on attempt ${attempt}`
+				);
+
+				// Send message TO content script...
+				chrome.tabs.sendMessage(
+					activeTabId,
+					{ action: "triggerPageAnalysis" },
+					(response) => {
+						if (chrome.runtime.lastError) {
+							console.warn(
+								`BubbleTranslate: Could not send/receive message to/from content script in tab ${activeTabId}. Error: ${chrome.runtime.lastError.message}`
+							);
+							return;
+						}
+						console.log(
+							`BubbleTranslate: Received response from content script:`,
+							response
 						);
-						return;
 					}
-					console.log(
-						`BubbleTranslate: Received response from content script:`,
-						response
-					);
-				}
-			);
-			console.log(
-				`BubbleTranslate: Sent 'triggerPageAnalysis' message to tab ${activeTabId}`
-			);
+				);
+				console.log(
+					`BubbleTranslate: Sent 'triggerPageAnalysis' message to tab ${activeTabId}`
+				);
+			} else {
+				// This case might happen if tabs[0] is unexpectedly null or lacks an ID
+				console.error(
+					`BubbleTranslate: Found tabs array, but first element has no ID on attempt ${attempt}. Tabs array:`,
+					tabs
+				);
+			}
 		} else {
-			// Failed to find tab
+			// Failed to find any active tab
 			if (attempt < maxAttempts) {
 				console.warn(
-					`BubbleTranslate: Failed to find active tab on attempt ${attempt}. Retrying in ${retryDelay}ms...`
+					`BubbleTranslate: Failed to find ANY active tab ({active: true}) on attempt ${attempt}. Retrying in ${retryDelay}ms...`
 				);
 				setTimeout(() => {
 					getActiveTabAndSendMessage(attempt + 1); // Retry
 				}, retryDelay);
 			} else {
 				console.error(
-					`BubbleTranslate: Failed to find active tab after ${maxAttempts} attempts. Query result was:`,
-					tabs
+					`BubbleTranslate: Failed to find ANY active tab ({active: true}) after ${maxAttempts} attempts. Query result was empty.`
 				);
 			}
 		}
 	});
 }
-
-// --- Added listener placeholder for messages FROM content script ---
-// Note: This listener was implicitly added above within the main onMessage listener
-// to handle "processImage". Ensure only one primary onMessage listener is active.
-// The code above already handles multiple actions within the single listener.
