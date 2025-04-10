@@ -56,7 +56,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 		case "triggerPageAnalysis":
 			console.log("BubbleTranslate: 'triggerPageAnalysis' action received.");
 			// Reload styles just in case they changed before trigger
-			loadStyleSettings(); // Ensure styles are fresh before processing
 			let imagesFoundCount = 0; // Keep track of count
 			let processingError = null;
 
@@ -125,7 +124,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 				}
 			}
 			// Return true because loadStyleSettings is async and sendResponse is in finally.
-			return true;
+			return false;
 
 		// --- Cases for displayTranslation and translationError ---
 		case "displayTranslation":
