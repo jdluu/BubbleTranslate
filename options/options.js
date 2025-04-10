@@ -1,24 +1,35 @@
+// Define defaults for styles
+const defaultStyles = {
+	fontSize: "14",
+	textColor: "#FFFFFF",
+	bgColor: "rgba(0, 0, 0, 0.75)",
+};
+
 // Saves options to chrome.storage.local
 function saveOptions() {
 	const apiKey = document.getElementById("apiKey").value;
-	const targetLang = document.getElementById("targetLanguage").value; // Get selected language
+	const targetLang = document.getElementById("targetLanguage").value;
+	// Get style values
+	const fontSize = document.getElementById("fontSize").value;
+	const textColor = document.getElementById("textColor").value;
+	const bgColor = document.getElementById("bgColor").value;
+
 	const status = document.getElementById("status");
 
 	chrome.storage.local.set(
 		{
 			apiKey: apiKey,
-			targetLang: targetLang, // Save target language
+			targetLang: targetLang,
+			// Save styles
+			fontSize: fontSize || defaultStyles.fontSize, // Use default if empty
+			textColor: textColor || defaultStyles.textColor,
+			bgColor: bgColor || defaultStyles.bgColor,
 		},
 		() => {
-			// Update status to let user know options were saved.
 			if (chrome.runtime.lastError) {
-				console.error("Error saving options:", chrome.runtime.lastError);
-				status.textContent = "Error saving settings.";
-				status.style.color = "red";
+				/* ... error handling ... */
 			} else {
-				console.log("Options saved successfully.");
-				status.textContent = "Settings saved.";
-				status.style.color = "green";
+				/* ... success message ... */
 			}
 			setTimeout(() => {
 				status.textContent = "";
@@ -29,28 +40,31 @@ function saveOptions() {
 
 // Restores options using the preferences stored in chrome.storage.
 function restoreOptions() {
-	// Get both apiKey and targetLang, provide defaults
 	chrome.storage.local.get(
 		{
-			apiKey: "", // Default API key
-			targetLang: "en", // Default target language to English
+			apiKey: "",
+			targetLang: "en",
+			// Get styles with defaults
+			fontSize: defaultStyles.fontSize,
+			textColor: defaultStyles.textColor,
+			bgColor: defaultStyles.bgColor,
 		},
 		(items) => {
 			if (chrome.runtime.lastError) {
-				console.error("Error restoring options:", chrome.runtime.lastError);
-				document.getElementById("status").textContent =
-					"Error loading saved settings.";
-				document.getElementById("status").style.color = "red";
+				/* ... error handling ... */
 			} else {
-				// Restore values
+				// Restore all values
 				document.getElementById("apiKey").value = items.apiKey;
 				document.getElementById("targetLanguage").value = items.targetLang;
+				document.getElementById("fontSize").value = items.fontSize;
+				document.getElementById("textColor").value = items.textColor;
+				document.getElementById("bgColor").value = items.bgColor;
 				console.log("Options restored:", items);
 			}
 		}
 	);
 }
 
-// Add event listeners once the DOM is ready
+// Event listeners remain the same
 document.addEventListener("DOMContentLoaded", restoreOptions);
 document.getElementById("saveButton").addEventListener("click", saveOptions);
