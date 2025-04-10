@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>BubbleTranslate Options</title>
+		<link rel="stylesheet" href="options.css" />
+	</head>
+	<body>
+		<h1>BubbleTranslate Options</h1>
+
+		<div class="option-item">
+			<label for="apiKey">Google Cloud API Key:</label>
+			<input
+				type="password"
+				id="apiKey"
+				name="apiKey"
+				size="60"
+				placeholder="Paste your API key here"
+			/>
+			<span class="description"
+				>Required for OCR and Translation features. Obtain from your Google
+				Cloud Console. Key is stored locally.</span
+			>
+		</div>
+
+		<div class="button-container">
+			<button id="saveButton">Save Key</button>
+		</div>
+
+		<div id="status" class="status-message"></div>
+
+		<script src="options.js"></script>
+	</body>
+</html>
