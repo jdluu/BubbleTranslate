@@ -7,8 +7,8 @@
   - [x] Create `.gitignore` file
   - [x] Create `README.md` (this file)
   - [x] Create `TODO.md` (this file)
-  - [ ] Create basic file structure (`manifest.json`, `icons/`, `popup/`, `content/`, `background/`)
-  - [ ] Create placeholder icons (16, 48, 128 px)
+  - [x] Create basic file structure (`manifest.json`, `icons/`, `popup/`, `content/`, `background/`)
+  - [x] Create placeholder icons (16, 48, 128 px)
 - [ ] **Manifest (`manifest.json`):**
   - [ ] Define `manifest_version: 3`, `name: BubbleTranslate`, `version`, `description`
   - [ ] Request necessary `permissions` (`activeTab`, `scripting`, potentially `storage`)
