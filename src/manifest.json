@@ -1,0 +1,41 @@
+{
+	"manifest_version": 3,
+	"name": "BubbleTranslate",
+	"version": "1.0.0",
+	"description": "Live translates text within manga and comic images.",
+
+	"permissions": ["activeTab", "scripting", "storage", "tabs"],
+
+	"action": {
+		"default_popup": "features/popup_ui/popup.html",
+		"default_icon": {
+			"16": "assets/icons/icon16.png",
+			"48": "assets/icons/icon48.png",
+			"128": "assets/icons/icon128.png"
+		}
+	},
+
+	"options_ui": {
+		"page": "features/settings/options.html",
+		"open_in_tab": true
+	},
+
+	"icons": {
+		"16": "assets/icons/icon16.png",
+		"48": "assets/icons/icon48.png",
+		"128": "assets/icons/icon128.png"
+	},
+
+	"content_scripts": [
+		{
+			"matches": ["<all_urls>"],
+			"js": ["features/page_interaction/content.js"],
+			"css": ["features/page_interaction/content.css"]
+		}
+	],
+
+	"background": {
+		"service_worker": "core/background.js",
+		"type": "module"
+	}
+}

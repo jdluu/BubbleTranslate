@@ -1,0 +1,32 @@
+{
+  "name": "bubbletranslate",
+  "version": "1.0.0",
+  "description": "BubbleTranslate is a Chrome browser extension designed to provide on-the-fly translation of text found within manga, comics, webtoons, and other images directly in your browser. It leverages Optical Character Recognition (OCR) and machine translation technologies to help bridge language barriers for visual content.",
+  "scripts": {
+    "clean": "rimraf ./dist",
+    "compile": "tsc --project tsconfig.json",
+    "copy-assets": "cpx \"src/**/*.{html,css,png,json}\" dist --parents --verbose",
+    "build": "npm run clean && npm run compile && npm run copy-assets",
+    "watch:compile": "tsc --project tsconfig.json --watch",
+    "watch:assets": "cpx \"src/**/*.{html,css,png,json}\" dist --parents --watch --verbose",
+    "watch": "npm run clean && concurrently \"npm:watch:compile\" \"npm:watch:assets\"" 
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jdluu/BubbleTranslate.git"
+  },
+  "keywords": ["chrome-extension", "translate", "manga", "ocr"], 
+  "author": "jdluu", 
+  "license": "", 
+  "bugs": {
+    "url": "https://github.com/jdluu/BubbleTranslate/issues"
+  },
+  "homepage": "https://github.com/jdluu/BubbleTranslate#readme",
+  "devDependencies": {
+    "@types/chrome": "^0.0.268", 
+    "cpx": "^1.5.0", 
+    "rimraf": "^5.0.7", 
+    "typescript": "^5.4.5",
+    "concurrently": "^8.2.2"
+  }
+}

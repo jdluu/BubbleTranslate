@@ -1,0 +1,19 @@
+// tsconfig.json
+{
+	"compilerOptions": {
+		"target": "ES2020", // Target modern JavaScript version
+		"module": "ES2020", // Use ES module system
+		"outDir": "./dist", // Output compiled JS to dist/
+		"rootDir": "./src", // Source files are in src/
+		"strict": true, // Enable all strict type-checking options
+		"esModuleInterop": true, // Allows default imports from commonjs modules
+		"skipLibCheck": true, // Skip type checking of declaration files
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true, // Allow importing JSON files
+		"lib": ["ES2020", "DOM", "DOM.Iterable"], // Include necessary libraries
+		"noEmitOnError": true, // Don't output JS if there are TS errors
+		"sourceMap": true // Generate source maps for debugging TS
+	},
+	"include": ["src/**/*"], // Compile all files within src/
+	"exclude": ["node_modules", "dist"] // Exclude these directories
+}
