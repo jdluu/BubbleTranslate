@@ -1,43 +1,61 @@
 // ============================================================================
 // BubbleTranslate - Content Script
+// Author: jdluu
+// Version: 1.1.0
+// Description: Finds images, sends them for processing, and displays
+//              translations or errors as overlays on the webpage.
 // ============================================================================
+
+"use strict"; // Enforce stricter parsing and error handling
 
 console.log("BubbleTranslate: Content Script Loaded!");
 
+// --- Constants ---
+const MIN_IMG_WIDTH = 300; // Minimum width for an image to be considered
+const MIN_IMG_HEIGHT = 400; // Minimum height for an image to be considered
+const WRAPPER_CLASS = "bubbletranslate-wrapper";
+const OVERLAY_CLASS = "bubbletranslate-overlay";
+const ERROR_OVERLAY_CLASS = "bubbletranslate-error-overlay";
+const UNIQUE_ID_ATTR = "data-bubbletranslate-id"; // Attribute to uniquely identify processed images
+
 // --- Globals ---
 let overlayStyles = {
-	fontSize: "14px", // Default style values
+	fontSize: "14px",
 	textColor: "#FFFFFF",
-	bgColor: "rgba(0, 0, 0, 0.75)",
+	backgroundColor: "rgba(0, 0, 0, 0.75)",
+	zIndex: "9998", // Default z-index for overlays
 };
+let uniqueIdCounter = 0; // Simple counter for generating unique IDs
 
 // ============================================================================
-// Initial Setup
+// Initial Setup & Style Management
 // ============================================================================
 
 /**
- * Loads style settings from local storage when the script starts.
+ * Loads style settings from local storage, updating the global overlayStyles.
  */
 function loadStyleSettings() {
 	chrome.storage.local.get(
 		{
-			// Defaults matching options page
+			// Defaults matching options page AND global object
 			fontSize: "14",
 			textColor: "#FFFFFF",
 			bgColor: "rgba(0, 0, 0, 0.75)",
+			zIndex: "9998", // Load zIndex from storage
 		},
 		(items) => {
 			if (chrome.runtime.lastError) {
 				console.error(
 					"BubbleTranslate: Error loading style settings:",
-					chrome.runtime.lastError
+					chrome.runtime.lastError.message
 				);
-				return;
+				return; // Keep existing defaults if loading fails
 			}
-			// Update global styles object
-			overlayStyles.fontSize = items.fontSize + "px"; // Ensure 'px' unit
+			// Update global styles object, ensuring units/format
+			overlayStyles.fontSize = items.fontSize + "px";
 			overlayStyles.textColor = items.textColor;
-			overlayStyles.bgColor = items.bgColor;
+			overlayStyles.backgroundColor = items.bgColor;
+			overlayStyles.zIndex = items.zIndex || "9998"; // Fallback just in case
 			console.log("BubbleTranslate: Style settings loaded:", overlayStyles);
 		}
 	);
@@ -46,88 +64,96 @@ function loadStyleSettings() {
 // Load settings immediately when the script is injected.
 loadStyleSettings();
 
-// ============================================================================
-// Message Handling
-// ============================================================================
-
-/**
- * Listens for messages from the background script.
- */
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-	console.log("BubbleTranslate: Message received in content script:", message);
-
-	switch (message.action) {
-		case "triggerPageAnalysis":
-			console.log("BubbleTranslate: 'triggerPageAnalysis' action received.");
-			// Ensure styles are reasonably fresh before analysis begins
-			// Note: This call is async, but subsequent logic doesn't depend on it finishing *here*
-			// because display functions use the global overlayStyles object later.
-			loadStyleSettings();
-			handlePageAnalysis(sendResponse); // Pass sendResponse to the handler
-			// Return true because the image processing and response sending might be async within handlePageAnalysis
-			return true;
-
-		case "displayBlockTranslation": // *** UPDATED ACTION ***
+// Listen for changes in storage to update styles dynamically (optional but good practice)
+chrome.storage.onChanged.addListener((changes, areaName) => {
+	if (areaName === "local") {
+		// Check if any of our relevant style settings changed
+		if (
+			changes.fontSize ||
+			changes.textColor ||
+			changes.bgColor ||
+			changes.zIndex
+		) {
 			console.log(
-				`   Received block translation for ${message.originalImageUrl?.substring(
-					0,
-					60
-				)}...`
+				"BubbleTranslate: Detected style changes in storage, reloading."
 			);
-			// Check if necessary data is present
-			if (
-				message.originalImageUrl &&
-				message.translatedText &&
-				message.boundingBox
-			) {
-				// Pass the global styles object
-				displayBlockOverlay(
-					message.originalImageUrl,
-					message.translatedText,
-					message.boundingBox,
-					overlayStyles
-				);
-			} else {
-				console.warn(
-					"BubbleTranslate: Missing data in displayBlockTranslation message.",
-					message
-				);
-			}
-			return false; // No response needed back to background for this
-
-		case "translationError":
-			console.warn(
-				`   Received error for ${message.originalImageUrl?.substring(
-					0,
-					60
-				)}...: ${message.error}`
-			);
-			// Pass styles to error overlay
-			if (message.originalImageUrl) {
-				displayErrorOverlay(
-					message.originalImageUrl,
-					message.error,
-					message.boundingBox,
-					overlayStyles
-				);
-			}
-			return false; // No response needed
-
-		default:
-			console.log(
-				`BubbleTranslate Content Script: Received unknown action: ${message.action}`
-			);
-			return false;
+			loadStyleSettings(); // Reload styles
+		}
 	}
 });
 
+// ============================================================================
+// Message Handling (from Background Script)
+// ============================================================================
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+	// Ignore messages not from the extension background script
+	if (!sender.tab) {
+		console.log("BubbleTranslate: Received message:", message);
+		switch (message.action) {
+			case "triggerPageAnalysis":
+				// Reload styles just before analysis, ensuring freshness
+				loadStyleSettings();
+				handlePageAnalysis(sendResponse);
+				return true; // Indicate async response (from handlePageAnalysis)
+
+			case "displayBlockTranslation":
+				if (message.imageId && message.translatedText && message.boundingBox) {
+					displayBlockOverlay(
+						message.imageId,
+						message.translatedText,
+						message.boundingBox,
+						overlayStyles // Pass current styles
+					);
+				} else {
+					console.warn(
+						"BubbleTranslate: Missing data for displayBlockTranslation:",
+						message
+					);
+				}
+				return false; // No response needed
+
+			case "translationError":
+				if (message.imageId && message.error) {
+					displayErrorOverlay(
+						message.imageId,
+						message.error,
+						message.boundingBox, // May be null if error happened before detection
+						overlayStyles // Pass current styles
+					);
+				} else {
+					console.warn(
+						"BubbleTranslate: Missing data for translationError:",
+						message
+					);
+				}
+				return false; // No response needed
+
+			default:
+				console.log(
+					`BubbleTranslate: Received unknown action: ${message.action}`
+				);
+				return false; // No response needed
+		}
+	}
+	// If message is from a tab (another content script?), ignore it.
+	// You might add more robust sender verification if needed.
+	return false;
+});
+
+// ============================================================================
+// Core Logic - Page Analysis & Image Processing Trigger
+// ============================================================================
+
 /**
- * Handles the 'triggerPageAnalysis' action: finds images, sends them to background, responds.
- * @param {function} sendResponse - The function to call to send a response back to the background script.
+ * Finds eligible images, assigns unique IDs, and sends them to the background script.
+ * Responds to the initial trigger message indicating start or error.
+ * @param {function} sendResponse - Function to send response back to the background script.
  */
 function handlePageAnalysis(sendResponse) {
 	let imagesFoundCount = 0;
-	let processingError = null;
+	let imagesSentCount = 0;
+	let pageAnalysisError = null;
 
 	try {
 		const images = findPotentialMangaImages();
@@ -136,131 +162,210 @@ function handlePageAnalysis(sendResponse) {
 
 		images.forEach((img) => {
 			try {
-				if (img && img.src) {
+				// Ensure image has a valid source and hasn't been processed already in this session
+				if (
+					img &&
+					img.src &&
+					(img.src.startsWith("http") || img.src.startsWith("data:")) &&
+					!img.hasAttribute(UNIQUE_ID_ATTR) // Check if already tagged
+				) {
+					const imageId = `bt-${Date.now()}-${uniqueIdCounter++}`;
+					img.setAttribute(UNIQUE_ID_ATTR, imageId); // Tag the image
+
 					console.log(
-						`BubbleTranslate: Sending image URL to background: ${img.src.substring(
+						`BubbleTranslate: Sending image [${imageId}] to background: ${img.src.substring(
 							0,
-							100
+							80
 						)}...`
 					);
 					chrome.runtime.sendMessage({
 						action: "processImage",
 						imageUrl: img.src,
+						imageId: imageId, // Send the unique ID
 					});
+					imagesSentCount++;
+				} else if (img.hasAttribute(UNIQUE_ID_ATTR)) {
+					// console.log(`BubbleTranslate: Skipping already tagged image: ${img.src.substring(0, 80)}...`);
 				} else {
-					/* ... warn ... */
+					console.warn(
+						`BubbleTranslate: Skipping image with invalid src: ${img.src?.substring(
+							0,
+							80
+						)}...`
+					);
 				}
 			} catch (sendError) {
-				/* ... handle error ... */ processingError =
-					processingError || sendError;
+				console.error(
+					`BubbleTranslate: Error sending image ${img?.src?.substring(
+						0,
+						80
+					)}... to background:`,
+					sendError
+				);
+				pageAnalysisError = pageAnalysisError || sendError; // Keep first error
 			}
 		});
 	} catch (findError) {
-		console.error(
-			"BubbleTranslate: Error during image finding/processing:",
-			findError
-		);
-		processingError = findError;
+		console.error("BubbleTranslate: Error during image finding:", findError);
+		pageAnalysisError = findError;
 	} finally {
 		console.log(
-			"BubbleTranslate: Finished page analysis. Sending response to background."
+			`BubbleTranslate: Page analysis finished. Sent ${imagesSentCount} new images for processing.`
 		);
-		if (processingError) {
+		if (pageAnalysisError) {
 			sendResponse({
 				status: "error",
-				error: processingError.message || "Unknown content script error",
+				error: pageAnalysisError.message || "Unknown content script error",
 				foundCount: imagesFoundCount,
+				sentCount: imagesSentCount,
 			});
 		} else {
 			sendResponse({
 				status: "processingImages",
 				foundCount: imagesFoundCount,
+				sentCount: imagesSentCount,
 			});
 		}
 	}
 }
 
 // ============================================================================
-// DOM Manipulation / Overlay Functions
+// DOM Manipulation - Overlays and Positioning
 // ============================================================================
 
 /**
- * Creates and displays a translation overlay positioned over a specific text block.
- * @param {string} imageUrl - The URL of the original image.
- * @param {string} translatedText - The translated text content.
- * @param {object} boundingBox - The boundingBox object from Vision API ({vertices: [{x, y},...]}).
- * @param {object} styles - The style preferences object ({fontSize, textColor, bgColor}).
+ * Finds an image element by its unique BubbleTranslate ID.
+ * @param {string} imageId - The unique ID assigned during analysis.
+ * @returns {HTMLImageElement | null} The image element or null if not found.
  */
-function displayBlockOverlay(imageUrl, translatedText, boundingBox, styles) {
-	const escapedUrl = imageUrl.replace(/"/g, '\\"');
-	const imgElement = document.querySelector(`img[src="${escapedUrl}"]`);
+function findImageById(imageId) {
+	if (!imageId) return null;
+	// Use attribute selector for reliability
+	return document.querySelector(`img[${UNIQUE_ID_ATTR}="${imageId}"]`);
+}
 
+/**
+ * Displays the translated text overlay over the specified block area.
+ * @param {string} imageId - The unique ID of the target image.
+ * @param {string} translatedText - The translated text content.
+ * @param {object} boundingBox - The bounding box vertices from Vision API.
+ * @param {object} styles - The current style settings (fontSize, textColor, etc.).
+ */
+function displayBlockOverlay(imageId, translatedText, boundingBox, styles) {
+	const imgElement = findImageById(imageId);
 	if (!imgElement) {
 		console.warn(
-			`   Could not find image element for ${imageUrl} to display block overlay.`
+			`BubbleTranslate: Could not find image [${imageId}] for overlay.`
 		);
 		return;
 	}
-	// We allow multiple block overlays per image, so no duplicate check based on imgElement needed here.
-	// We could add a check based on boundingBox if needed, but unlikely necessary.
 
-	console.log(`   Creating block overlay for ${imageUrl.substring(0, 60)}...`);
-
-	// Ensure the image has a positioned wrapper for absolute positioning
 	const wrapper = ensurePositionedWrapper(imgElement);
-	if (!wrapper) return; // Should not happen if ensurePositionedWrapper works
+	if (!wrapper) return; // Should not happen if imgElement exists
 
-	// Calculate position and dimensions based on bounding box and image scaling
 	const overlayPosition = calculateOverlayPosition(imgElement, boundingBox);
 	if (!overlayPosition) {
 		console.warn(
-			`   Could not calculate valid overlay position for block on ${imageUrl.substring(
-				0,
-				60
-			)}...`
+			`BubbleTranslate: Could not calculate overlay position for block on image [${imageId}].`
 		);
 		return;
 	}
 
-	// Create the overlay div
+	// Create and style the overlay div
 	const overlayDiv = document.createElement("div");
 	overlayDiv.textContent = translatedText;
-	overlayDiv.classList.add("bubbletranslate-overlay"); // Add class for potential toggling later
+	overlayDiv.classList.add(OVERLAY_CLASS);
 
-	// Apply styles
+	// Apply core styles
 	overlayDiv.style.position = "absolute";
 	overlayDiv.style.top = `${overlayPosition.top}px`;
 	overlayDiv.style.left = `${overlayPosition.left}px`;
 	overlayDiv.style.width = `${overlayPosition.width}px`;
 	overlayDiv.style.height = `${overlayPosition.height}px`;
 
-	overlayDiv.style.backgroundColor = styles.bgColor; // Use loaded style
-	overlayDiv.style.color = styles.textColor; // Use loaded style
-	overlayDiv.style.fontSize = styles.fontSize; // Use loaded style
+	// Apply user-defined styles
+	overlayDiv.style.fontSize = styles.fontSize;
+	overlayDiv.style.color = styles.textColor;
+	overlayDiv.style.backgroundColor = styles.backgroundColor;
+	overlayDiv.style.zIndex = styles.zIndex;
 
-	// Additional styles for better block display
-	overlayDiv.style.padding = "2px"; // Smaller padding
-	overlayDiv.style.zIndex = "9999";
-	overlayDiv.style.borderRadius = "2px";
-	overlayDiv.style.textAlign = "center";
-	overlayDiv.style.pointerEvents = "none";
-	overlayDiv.style.overflow = "hidden"; // Hide overflow
-	overlayDiv.style.display = "flex"; // Use flexbox for vertical centering
-	overlayDiv.style.justifyContent = "center"; // Center horizontally
-	overlayDiv.style.alignItems = "center"; // Center vertically
-	overlayDiv.style.lineHeight = "1.1"; // Adjust line height if needed
-	overlayDiv.style.boxSizing = "border-box"; // Include padding in width/height
+	// Additional necessary styles
+	overlayDiv.style.overflow = "hidden"; // Prevent text spilling out
+	overlayDiv.style.display = "flex"; // Use flexbox for alignment
+	overlayDiv.style.justifyContent = "center"; // Center text horizontally
+	overlayDiv.style.alignItems = "center"; // Center text vertically
+	overlayDiv.style.textAlign = "center"; // Ensure text is centered
+	overlayDiv.style.boxSizing = "border-box"; // Include padding/border in size
+	overlayDiv.style.padding = "2px 4px"; // Add some padding
+	overlayDiv.style.pointerEvents = "none"; // Allow clicks to pass through
+	overlayDiv.style.lineHeight = "1.2"; // Adjust line height for readability
 
 	// Append the overlay to the wrapper
 	wrapper.appendChild(overlayDiv);
-	console.log(`   Block overlay added for ${imageUrl.substring(0, 60)}...`);
+	// console.log(`BubbleTranslate: Block overlay added for image [${imageId}].`);
 }
 
 /**
- * Calculates the scaled pixel position and dimensions for an overlay based on Vision API boundingBox vertices.
+ * Displays a small error indicator near an image or specific block.
+ * @param {string} imageId - The unique ID of the target image.
+ * @param {string} errorMessage - The error message text.
+ * @param {object|null} boundingBox - Optional bounding box for specific error location.
+ * @param {object} styles - The current style settings.
+ */
+function displayErrorOverlay(imageId, errorMessage, boundingBox, styles) {
+	const imgElement = findImageById(imageId);
+	if (!imgElement) {
+		console.warn(
+			`BubbleTranslate: Could not find image [${imageId}] for error overlay.`
+		);
+		return;
+	}
+
+	const wrapper = ensurePositionedWrapper(imgElement);
+	if (!wrapper) return;
+
+	let positionStyles = { top: "5px", left: "5px" }; // Default: top-left of image
+
+	// If boundingBox is available, position error near the specific block
+	if (boundingBox) {
+		const overlayPosition = calculateOverlayPosition(imgElement, boundingBox);
+		if (overlayPosition) {
+			// Position at the top-left corner of the bounding box
+			positionStyles.top = `${overlayPosition.top}px`;
+			positionStyles.left = `${overlayPosition.left}px`;
+		}
+	}
+
+	// Create and style the error indicator
+	const errorDiv = document.createElement("div");
+	errorDiv.textContent = `⚠️`; // Use a simple warning icon
+	errorDiv.title = `BubbleTranslate Error: ${errorMessage}`; // Show full error on hover
+	errorDiv.classList.add(ERROR_OVERLAY_CLASS);
+
+	errorDiv.style.position = "absolute";
+	errorDiv.style.top = positionStyles.top;
+	errorDiv.style.left = positionStyles.left;
+	errorDiv.style.backgroundColor = "rgba(255, 0, 0, 0.7)"; // Red background
+	errorDiv.style.color = "#FFFFFF"; // White icon
+	errorDiv.style.padding = "1px 3px";
+	errorDiv.style.fontSize = "12px";
+	errorDiv.style.borderRadius = "50%";
+	errorDiv.style.pointerEvents = "none";
+	errorDiv.style.lineHeight = "1";
+	// Ensure error icon is above regular overlays
+	errorDiv.style.zIndex = (parseInt(styles.zIndex || "9998") + 1).toString();
+
+	wrapper.appendChild(errorDiv);
+	console.log(`BubbleTranslate: Error indicator added for image [${imageId}].`);
+}
+
+/**
+ * Calculates the scaled pixel position and dimensions for an overlay
+ * based on bounding box vertices and the image's current display size.
  * @param {HTMLImageElement} imgElement - The target image element.
- * @param {object} boundingBox - The boundingBox object ({vertices: [{x,y},...]}).
- * @returns {object|null} An object {top, left, width, height} in pixels, or null if calculation fails.
+ * @param {object} boundingBox - Bounding box object with {vertices: [{x, y}, ...]}.
+ * @returns {{top: number, left: number, width: number, height: number} | null}
+ *          Position/dimensions in pixels, or null if calculation fails.
  */
 function calculateOverlayPosition(imgElement, boundingBox) {
 	if (
@@ -268,222 +373,171 @@ function calculateOverlayPosition(imgElement, boundingBox) {
 		!boundingBox.vertices ||
 		boundingBox.vertices.length < 4
 	) {
+		console.warn(
+			"BubbleTranslate: Invalid boundingBox data for position calculation."
+		);
 		return null;
 	}
 
 	const vertices = boundingBox.vertices;
 
-	// Get image's displayed dimensions vs natural dimensions to calculate scaling
+	// Use offsetWidth/Height for displayed size, naturalWidth/Height for original size
 	const displayWidth = imgElement.offsetWidth;
 	const displayHeight = imgElement.offsetHeight;
-	const naturalWidth = imgElement.naturalWidth || displayWidth; // Fallback if naturalWidth isn't available
-	const naturalHeight = imgElement.naturalHeight || displayHeight; // Fallback
+	const naturalWidth = imgElement.naturalWidth;
+	const naturalHeight = imgElement.naturalHeight;
 
-	// Prevent division by zero if image hasn't loaded dimensions properly
+	// Crucial check: If natural dimensions aren't available yet (image loading?),
+	// we cannot accurately calculate the scale. Return null to prevent errors.
+	// This might happen if translation results arrive extremely quickly.
 	if (naturalWidth === 0 || naturalHeight === 0) {
 		console.warn(
-			"Image natural dimensions are zero, cannot calculate scaling.",
-			imgElement
+			`BubbleTranslate: Image [${imgElement.getAttribute(
+				UNIQUE_ID_ATTR
+			)}] natural dimensions ( ${naturalWidth}x${naturalHeight} ) not available yet. Cannot calculate overlay position accurately.`
 		);
 		return null;
 	}
 
+	// Calculate scaling factors
 	const scaleX = displayWidth / naturalWidth;
 	const scaleY = displayHeight / naturalHeight;
 
-	// Find min/max coordinates from vertices (handle missing x/y, default to 0)
-	const xs = vertices.map((v) => v.x || 0);
-	const ys = vertices.map((v) => v.y || 0);
-	const minX = Math.min(...xs);
-	const minY = Math.min(...ys);
-	const maxX = Math.max(...xs);
-	const maxY = Math.max(...ys);
+	// Determine bounds from vertices (handle potential missing x/y)
+	try {
+		const xs = vertices.map((v) => v.x || 0);
+		const ys = vertices.map((v) => v.y || 0);
+		const minX = Math.min(...xs);
+		const minY = Math.min(...ys);
+		const maxX = Math.max(...xs);
+		const maxY = Math.max(...ys);
 
-	// Calculate scaled position and dimensions
-	const scaledTop = minY * scaleY;
-	const scaledLeft = minX * scaleX;
-	const scaledWidth = (maxX - minX) * scaleX;
-	const scaledHeight = (maxY - minY) * scaleY;
+		// Calculate scaled position and dimensions
+		const scaledTop = minY * scaleY;
+		const scaledLeft = minX * scaleX;
+		const scaledWidth = Math.max(1, (maxX - minX) * scaleX); // Ensure min width/height of 1px
+		const scaledHeight = Math.max(1, (maxY - minY) * scaleY);
 
-	// Basic validation
-	if (scaledWidth <= 0 || scaledHeight <= 0) {
-		console.warn("Calculated zero or negative overlay dimensions.", {
-			minX,
-			minY,
-			maxX,
-			maxY,
-			scaleX,
-			scaleY,
-		});
+		// Validate calculated dimensions
+		if (
+			isNaN(scaledTop) ||
+			isNaN(scaledLeft) ||
+			isNaN(scaledWidth) ||
+			isNaN(scaledHeight)
+		) {
+			console.warn(
+				`BubbleTranslate: Calculated invalid overlay dimensions (NaN) for image [${imgElement.getAttribute(
+					UNIQUE_ID_ATTR
+				)}].`
+			);
+			return null;
+		}
+
+		return {
+			top: scaledTop,
+			left: scaledLeft,
+			width: scaledWidth,
+			height: scaledHeight,
+		};
+	} catch (e) {
+		console.error(
+			`BubbleTranslate: Error during coordinate calculation for image [${imgElement.getAttribute(
+				UNIQUE_ID_ATTR
+			)}]:`,
+			e
+		);
 		return null;
 	}
-
-	console.log(
-		`   Calculated Position - Top: ${scaledTop.toFixed(
-			1
-		)}, Left: ${scaledLeft.toFixed(1)}, W: ${scaledWidth.toFixed(
-			1
-		)}, H: ${scaledHeight.toFixed(1)}`
-	);
-	return {
-		top: scaledTop,
-		left: scaledLeft,
-		width: scaledWidth,
-		height: scaledHeight,
-	};
 }
 
 /**
- * Ensures the parent of the image element has relative positioning for overlay placement.
- * Creates and inserts a wrapper div if necessary.
- * @param {HTMLImageElement} imgElement - The image element.
- * @returns {HTMLElement} The wrapper element (either new or existing parent).
+ * Ensures the direct parent of the image is relatively positioned for
+ * absolute positioning of overlays. Creates a wrapper div if needed.
+ * @param {HTMLImageElement} imgElement - The image element needing a positioned parent.
+ * @returns {HTMLElement | null} The positioned wrapper element, or null on failure.
  */
 function ensurePositionedWrapper(imgElement) {
 	const parent = imgElement.parentNode;
-	if (!parent) return null; // Should not happen in normal DOM
-
-	const parentPosition = getComputedStyle(parent).position;
-
-	if (
-		parentPosition === "relative" ||
-		parentPosition === "absolute" ||
-		parentPosition === "fixed"
-	) {
-		// console.log(`   Parent of image ${imgElement.src.substring(0, 60)}... is already positioned.`);
-		return parent; // Parent is already suitable
-	} else {
-		// Parent is static, create a wrapper
-		// Check if a wrapper already exists (e.g., from a previous overlay on the same image)
-		if (parent.classList.contains("bubbletranslate-wrapper")) {
-			return parent; // Already wrapped
-		}
-
-		console.log(`   Wrapping image ${imgElement.src.substring(0, 60)}...`);
-		const wrapper = document.createElement("div");
-		wrapper.classList.add("bubbletranslate-wrapper"); // Add class to identify wrapper
-		wrapper.style.position = "relative";
-		// Try to mimic image's display style (block or inline-block are common)
-		wrapper.style.display =
-			getComputedStyle(imgElement).display || "inline-block";
-		// Insert wrapper before the image
-		parent.insertBefore(wrapper, imgElement);
-		// Move the image inside the wrapper
-		wrapper.appendChild(imgElement);
-		return wrapper;
-	}
-}
-
-/**
- * Displays a simple error indicator near/over an image block.
- * @param {string} imageUrl - The URL of the original image.
- * @param {string} errorMessage - The error message text.
- * @param {object|null} boundingBox - Optional boundingBox object. If provided, positions near block.
- * @param {object} styles - The style preferences object.
- */
-function displayErrorOverlay(imageUrl, errorMessage, boundingBox, styles) {
-	const escapedUrl = imageUrl.replace(/"/g, '\\"');
-	const imgElement = document.querySelector(`img[src="${escapedUrl}"]`);
-	if (!imgElement) return;
-
-	// Decide positioning: Use bounding box if available, otherwise top-left of image
-	let positionStyles = { top: "5px", left: "5px" }; // Default top-left of image
-	let wrapper = null;
-
-	if (boundingBox) {
-		const overlayPosition = calculateOverlayPosition(imgElement, boundingBox);
-		if (overlayPosition) {
-			positionStyles.top = `${overlayPosition.top}px`;
-			positionStyles.left = `${overlayPosition.left}px`;
-			// Make error smaller than block? Or just put icon?
-			// positionStyles.width = `${overlayPosition.width}px`;
-			// positionStyles.height = `${overlayPosition.height}px`;
-		}
+	if (!parent || !(parent instanceof HTMLElement)) {
+		console.error(
+			"BubbleTranslate: Image parent is missing or not an HTMLElement."
+		);
+		return null;
 	}
 
-	// Ensure wrapper exists
-	wrapper = ensurePositionedWrapper(imgElement);
-	if (!wrapper) return;
-
-	// Check if an error overlay for this specific block/image already exists? Might be complex.
-	// For simplicity, we might allow multiple small error icons for now.
-
-	const errorDiv = document.createElement("div");
-	errorDiv.textContent = `⚠️`; // Just icon
-	errorDiv.title = `Translation Error: ${errorMessage}`; // Full error on hover
-	errorDiv.classList.add("bubbletranslate-error-overlay"); // Add specific class
-
-	errorDiv.style.position = "absolute";
-	errorDiv.style.top = positionStyles.top;
-	errorDiv.style.left = positionStyles.left;
-	errorDiv.style.backgroundColor = "rgba(255, 0, 0, 0.7)";
-	errorDiv.style.color = styles.textColor;
-	errorDiv.style.padding = "1px 3px";
-	errorDiv.style.fontSize = "12px"; // Smaller error icon
-	errorDiv.style.zIndex = "10000";
-	errorDiv.style.borderRadius = "50%"; // Make it round?
-	errorDiv.style.pointerEvents = "none";
-	errorDiv.style.lineHeight = "1"; // Ensure icon fits
-
-	wrapper.appendChild(errorDiv);
-	console.log(`   Error indicator added for ${imageUrl.substring(0, 60)}...`);
-}
-
-// ============================================================================
-// Image Detection Function (Unchanged from previous version)
-// ============================================================================
-/**
- * Finds potential manga/comic images on the page based on dimensions.
- * @returns {HTMLImageElement[]} An array of image elements meeting criteria.
- */
-function findPotentialMangaImages() {
-	console.log("BubbleTranslate: --- Starting Image Search ---");
-	const allImages = document.querySelectorAll("img");
-	const potentialImages = [];
-	const minWidth = 300; // Minimum width threshold
-	const minHeight = 400; // Minimum height threshold
-
-	console.log(
-		`BubbleTranslate: Found ${allImages.length} total <img> tags. Checking dimensions...`
+	// Check if parent is already suitable OR if it's our specific wrapper
+	const parentPosition = window.getComputedStyle(parent).position;
+	const isPositioned = ["relative", "absolute", "fixed", "sticky"].includes(
+		parentPosition
 	);
 
-	allImages.forEach((img, index) => {
-		const width =
-			img.naturalWidth ||
-			img.offsetWidth ||
-			parseInt(img.getAttribute("width")) ||
-			0;
-		const height =
-			img.naturalHeight ||
-			img.offsetHeight ||
-			parseInt(img.getAttribute("height")) ||
-			0;
-		// Log dimensions for debugging - keep this for now
-		console.log(
-			`BubbleTranslate: Image[${index}] | Width: ${width}, Height: ${height} | Src: ${img.src.substring(
-				0,
-				100
-			)}...`
-		);
+	if (isPositioned) {
+		// If the parent is already positioned BUT it's not our dedicated wrapper,
+		// it *might* be okay, but creating our own wrapper is safer to avoid
+		// conflicts with existing page styles/structure.
+		// However, if it IS our wrapper, reuse it.
+		if (parent.classList.contains(WRAPPER_CLASS)) {
+			return parent;
+		}
+		// Let's decide to wrap anyway for consistency unless the parent is already the body or html?
+		// For now, let's proceed with wrapping if not already wrapped by us.
+	}
 
-		if (width >= minWidth && height >= minHeight) {
-			if (
-				img.src &&
-				(img.src.startsWith("http") || img.src.startsWith("data:"))
-			) {
-				console.log(
-					`%cBubbleTranslate: ---> Image[${index}] MET criteria! Adding.`,
-					"color: green; font-weight: bold;"
-				);
-				potentialImages.push(img);
-			} else {
-				/* ... log invalid src ... */
-			}
+	// Check if a wrapper already exists (e.g., from a previous overlay on the same image)
+	// This check is slightly redundant with the check above but ensures we find OUR wrapper.
+	if (parent.classList.contains(WRAPPER_CLASS)) {
+		return parent;
+	}
+
+	// Parent is static or unsuitable, create and insert a new wrapper
+	// console.log(`BubbleTranslate: Wrapping image [${imgElement.getAttribute(UNIQUE_ID_ATTR)}]...`);
+	const wrapper = document.createElement("div");
+	wrapper.classList.add(WRAPPER_CLASS);
+	wrapper.style.position = "relative";
+	// Try to mimic the image's display style to minimize layout shifts
+	wrapper.style.display =
+		window.getComputedStyle(imgElement).display || "inline-block";
+	// Transfer margin from image to wrapper to maintain spacing, then reset image margin
+	wrapper.style.margin = window.getComputedStyle(imgElement).margin;
+	imgElement.style.margin = "0";
+	// Transfer float if necessary
+	wrapper.style.float = window.getComputedStyle(imgElement).float;
+	// imgElement.style.float = 'none'; // Usually images inside relative wrappers don't need float
+
+	// Insert the wrapper right before the image
+	parent.insertBefore(wrapper, imgElement);
+	// Move the image inside the wrapper
+	wrapper.appendChild(imgElement);
+
+	return wrapper;
+}
+
+// ============================================================================
+// Image Detection
+// ============================================================================
+
+/**
+ * Finds potential manga/comic images on the page based on minimum dimensions.
+ * @returns {HTMLImageElement[]} An array of image elements meeting the criteria.
+ */
+function findPotentialMangaImages() {
+	const allImages = document.querySelectorAll("img");
+	const potentialImages = [];
+
+	allImages.forEach((img) => {
+		// Use naturalWidth/Height if available (more accurate), fallback to offsetWidth/Height
+		const width = img.naturalWidth || img.offsetWidth;
+		const height = img.naturalHeight || img.offsetHeight;
+
+		if (width >= MIN_IMG_WIDTH && height >= MIN_IMG_HEIGHT) {
+			potentialImages.push(img);
 		}
 	});
 
-	console.log(
-		`BubbleTranslate: --- Finished Image Search. Found ${potentialImages.length} potential images meeting criteria. ---`
-	);
 	return potentialImages;
 }
+
+// ============================================================================
+// Utility Functions (if any needed)
+// ============================================================================
+// (None currently, but could add helper functions here)
