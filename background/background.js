@@ -1,89 +1,94 @@
+// ============================================================================
+// BubbleTranslate - Background Script (Service Worker)
+// ============================================================================
+
 console.log("BubbleTranslate: Background Service Worker Started.");
 
-// --- Configuration ---
-// --- Add Cache Map ---
-const translationCache = new Map();
-// ---------------------
+// --- Globals ---
+// Cache for translation results (Temporarily disabled for block processing implementation)
+// const translationCache = new Map();
 
-// --- Event Listeners ---
+// ============================================================================
+// Event Listeners
+// ============================================================================
+
+/**
+ * Main listener for messages from popup or content scripts.
+ */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	console.log("BubbleTranslate: Message received.");
-	// console.log("Sender:", sender); // Keep for debugging if needed
-	// console.log("Request:", request); // Keep for debugging if needed
+	// console.log("Sender:", sender); // Optional: Log sender details if needed
+	// console.log("Request:", request); // Optional: Log full request if needed
 
-	if (request.action === "startTranslation") {
-		console.log("BubbleTranslate: 'startTranslation' action received.");
-		// Optional: Clear cache when a new full translation is requested?
-		// translationCache.clear();
-		// console.log("BubbleTranslate: Cache cleared on new translation request.");
-		getActiveTabAndSendMessage(1);
-		sendResponse({
-			status: "received",
-			message: "Background script acknowledged startTranslation.",
-		});
-		return true; // Indicate potential async work within getActiveTabAndSendMessage timeout
-	} else if (request.action === "processImage") {
-		console.log(
-			`BubbleTranslate: Received 'processImage' action for URL: ${request.imageUrl}`
-		);
+	switch (request.action) {
+		case "startTranslation":
+			console.log("BubbleTranslate: 'startTranslation' action received.");
+			// Optional: Clear cache here if re-enabled later
+			// translationCache.clear();
+			getActiveTabAndSendMessage(1); // Trigger content script analysis
+			// Send immediate acknowledgement back to popup
+			sendResponse({
+				status: "received",
+				message: "Background acknowledged startTranslation.",
+			});
+			break; // Added break statement
 
-		// We have the sender info here, which includes the tab ID
-		if (sender.tab && sender.tab.id) {
-			const tabId = sender.tab.id;
-			// Call the function to handle OCR/Translation/Caching
-			handleImageProcessing(request.imageUrl, tabId); // Now includes caching
-		} else {
-			console.error(
-				"BubbleTranslate: Received 'processImage' but sender tab ID is missing."
+		case "processImage":
+			console.log(
+				`BubbleTranslate: Received 'processImage' for URL: ${request.imageUrl.substring(
+					0,
+					100
+				)}...`
 			);
-		}
-		// No synchronous response needed back to content script for this message
-	} else {
-		console.log("BubbleTranslate: Received unknown action:", request.action);
+			if (sender.tab && sender.tab.id) {
+				const tabId = sender.tab.id;
+				// Initiate processing for each image URL received from content script
+				handleImageProcessingPerBlock(request.imageUrl, tabId);
+			} else {
+				console.error(
+					"BubbleTranslate: Received 'processImage' but sender tab ID is missing."
+				);
+			}
+			// No synchronous response needed for this message type
+			break; // Added break statement
+
+		default:
+			console.log("BubbleTranslate: Received unknown action:", request.action);
+			// Optionally handle unknown actions or send an error response
+			break; // Added break statement
 	}
 
-	// Return true because async operations might happen
+	// Return true to indicate potential asynchronous operations (like API calls, timeouts)
+	// This keeps the message channel open for potential future sendResponse calls (though not used sync here).
 	return true;
 });
 
 console.log("BubbleTranslate: Background message listener added.");
 
-// --- REVISED Image Processing Logic with Cache ---
-async function handleImageProcessing(imageUrl, tabId) {
-	console.log(
-		`BubbleTranslate: Handling image - ${imageUrl.substring(0, 60)}...`
-	);
+// ============================================================================
+// Core Image Processing Logic
+// ============================================================================
 
-	// --- Step 1: Check Cache ---
-	if (translationCache.has(imageUrl)) {
-		const cachedTranslation = translationCache.get(imageUrl);
-		console.log(
-			`   CACHE HIT for ${imageUrl.substring(0, 60)}... Sending cached result.`
-		);
-		chrome.tabs
-			.sendMessage(tabId, {
-				action: "displayTranslation",
-				originalImageUrl: imageUrl,
-				translatedText: cachedTranslation,
-			})
-			.catch((e) =>
-				console.warn(
-					`   Error sending cached displayTranslation message: ${e.message}`
-				)
-			);
-		return; // Stop processing, already sent cached result
-	}
+/**
+ * Fetches settings, image data, calls OCR/Translate APIs for text blocks,
+ * and sends results back to the content script.
+ * @param {string} imageUrl - The URL of the image to process.
+ * @param {number} tabId - The ID of the tab where the image is located.
+ */
+async function handleImageProcessingPerBlock(imageUrl, tabId) {
 	console.log(
-		`   CACHE MISS for ${imageUrl.substring(
+		`BubbleTranslate: Starting BLOCK processing for image - ${imageUrl.substring(
 			0,
 			60
-		)}... Proceeding with API calls.`
+		)}...`
 	);
-	// --------------------------
 
-	// 2. Get API Key AND Target Language from storage first
+	// --- Cache Check (Disabled for now) ---
+	// Future: Add block-level caching logic here if needed
+	// ------------------------------------
+
+	// 1. Get API Key and Target Language from storage
 	chrome.storage.local.get(["apiKey", "targetLang"], async (items) => {
-		// Fetch both keys
 		if (chrome.runtime.lastError) {
 			console.error(
 				"BubbleTranslate: Error getting settings from storage:",
@@ -96,96 +101,126 @@ async function handleImageProcessing(imageUrl, tabId) {
 			);
 			return;
 		}
-
 		const apiKeyFromStorage = items.apiKey;
-		// Use saved language, default to 'en' if somehow not set
-		const targetLangFromStorage = items.targetLang || "en";
+		const targetLangFromStorage = items.targetLang || "en"; // Default to 'en'
 
 		if (!apiKeyFromStorage) {
 			console.error("BubbleTranslate: API Key not found in storage.");
 			sendProcessingError(
 				tabId,
 				imageUrl,
-				"API Key not configured. Please set it via extension options."
+				"API Key not configured in extension options."
 			);
 			return;
 		}
-
 		console.log(
-			`BubbleTranslate: Using API Key (loaded) and Target Language: ${targetLangFromStorage}`
+			`   Using API Key (loaded) and Target Language: ${targetLangFromStorage}`
 		);
 
-		// 3. NOW, perform the processing INSIDE this callback
+		// 2. Perform processing (Fetch, Base64, OCR, Translate per block)
 		try {
-			console.log(`   Fetching image data for ${imageUrl.substring(0, 60)}...`);
+			console.log(`   Fetching image data for Base64...`);
 			const response = await fetch(imageUrl);
-			if (!response.ok) {
+			if (!response.ok)
 				throw new Error(
 					`Failed to fetch image: ${response.status} ${response.statusText}`
 				);
-			}
 			const imageBlob = await response.blob();
 			const base64ImageData = await blobToBase64(imageBlob);
-			// Remove the "data:image/...;base64," prefix required by Vision API's 'content' field
 			const cleanBase64 = base64ImageData.split(",")[1];
 			console.log(
 				`   Image data fetched (Base64 length: ${cleanBase64.length})`
 			);
 
-			// Call OCR, passing the retrieved key
-			const ocrText = await callVisionApi(cleanBase64, apiKeyFromStorage); // Pass key
-			if (!ocrText) {
-				console.log(
-					`   No text found by OCR for ${imageUrl.substring(0, 60)}...`
-				);
-				return; // Skip translation if no text
-			}
-			console.log(`   OCR Result: "${ocrText.substring(0, 100)}..."`);
-
-			// Call Translation, passing retrieved key AND language
-			const translatedText = await callTranslateApi(
-				ocrText,
-				targetLangFromStorage,
+			// Call OCR to get structured block data
+			const visionResult = await callVisionApiDetectBlocks(
+				cleanBase64,
 				apiKeyFromStorage
-			); // Pass lang & key
-			if (!translatedText) {
-				console.error(
-					`   Translation failed for OCR text of ${imageUrl.substring(
+			);
+
+			if (
+				visionResult &&
+				visionResult.blocks &&
+				visionResult.blocks.length > 0
+			) {
+				console.log(
+					`   Vision API found ${visionResult.blocks.length} text blocks.`
+				);
+
+				// Process each block (can run in parallel)
+				const translationPromises = visionResult.blocks.map(async (block) => {
+					if (block.text && block.boundingBox) {
+						try {
+							const blockTextClean = block.text.replace(/\s+/g, " ").trim(); // Basic text cleanup
+							if (!blockTextClean) return; // Skip empty blocks
+
+							console.log(
+								`      Translating block: "${blockTextClean.substring(
+									0,
+									50
+								)}..."`
+							);
+							const translatedText = await callTranslateApi(
+								blockTextClean,
+								targetLangFromStorage,
+								apiKeyFromStorage
+							);
+
+							if (translatedText) {
+								// Send result for THIS BLOCK back to content script
+								console.log(
+									`      Sending block translation back to tab ${tabId}`
+								);
+								chrome.tabs
+									.sendMessage(tabId, {
+										action: "displayBlockTranslation", // New action for content script
+										originalImageUrl: imageUrl,
+										boundingBox: block.boundingBox, // Send coordinates
+										translatedText: translatedText,
+									})
+									.catch((e) =>
+										console.warn(
+											`      Error sending block translation message: ${e.message}`
+										)
+									);
+							} else {
+								console.warn(
+									`      Translation failed for block: "${blockTextClean.substring(
+										0,
+										50
+									)}..."`
+								);
+							}
+						} catch (translateError) {
+							console.error(
+								`      Error during translation for block: "${block.text.substring(
+									0,
+									50
+								)}..."`,
+								translateError
+							);
+							sendProcessingError(
+								tabId,
+								imageUrl,
+								`Translation error for block: ${translateError.message}`,
+								block.boundingBox
+							);
+						}
+					}
+				});
+
+				await Promise.allSettled(translationPromises);
+				console.log(
+					`   Finished processing all blocks for ${imageUrl.substring(
 						0,
 						60
 					)}...`
 				);
-				return; // Skip sending if translation fails
-			}
-			console.log(
-				`   Translation Result [${targetLangFromStorage}]: "${translatedText.substring(
-					0,
-					100
-				)}..."`
-			); // Log target lang
-
-			// --- Step 4: Store result in Cache ---
-			console.log(
-				`   Storing result in cache for ${imageUrl.substring(0, 60)}...`
-			);
-			translationCache.set(imageUrl, translatedText);
-			// -------------------------------------
-
-			// 5. Send result back to the content script
-			console.log(
-				`   Sending translation back to content script (tab ${tabId})`
-			);
-			chrome.tabs
-				.sendMessage(tabId, {
-					action: "displayTranslation",
-					originalImageUrl: imageUrl, // Still send original URL for reference
-					translatedText: translatedText,
-				})
-				.catch((e) =>
-					console.warn(
-						`   Error sending displayTranslation message: ${e.message}`
-					)
+			} else {
+				console.log(
+					`   No text blocks found by OCR for ${imageUrl.substring(0, 60)}...`
 				);
+			}
 		} catch (error) {
 			console.error(
 				`BubbleTranslate: Error processing image ${imageUrl}:`,
@@ -197,27 +232,34 @@ async function handleImageProcessing(imageUrl, tabId) {
 				error.message || "Unknown processing error."
 			);
 		}
-	}); // --- End of chrome.storage.local.get callback ---
+	}); // End of chrome.storage.local.get callback
 }
 
-// (Keep callVisionApi, callTranslateApi, blobToBase64, sendProcessingError, getActiveTabAndSendMessage functions as they were)
-// --- REVISED Google Cloud Vision API Call Function ---
-async function callVisionApi(base64ImageData, apiKey) {
-	// Added apiKey parameter
-	// Accepts base64 string now
-	// Use the passed apiKey
+// ============================================================================
+// API Call Functions
+// ============================================================================
+
+/**
+ * Calls Google Vision API to detect text blocks and bounding boxes.
+ * @param {string} base64ImageData - Base64 encoded image data (without prefix).
+ * @param {string} apiKey - The Google Cloud API Key.
+ * @returns {Promise<object|null>} A promise resolving to an object { blocks: [{ text: string, boundingBox: object }] } or null.
+ */
+async function callVisionApiDetectBlocks(base64ImageData, apiKey) {
 	const url = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
 	const body = {
 		requests: [
 			{
 				image: { content: base64ImageData },
 				features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
+				// Optional: Add language hints if needed
+				// "imageContext": { "languageHints": ["ja", "en"] }
 			},
 		],
 	};
 
 	try {
-		console.log(`   Calling Vision API with Base64 data...`);
+		console.log(`   Calling Vision API (DOCUMENT_TEXT_DETECTION)...`);
 		const response = await fetch(url, {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -226,7 +268,7 @@ async function callVisionApi(base64ImageData, apiKey) {
 		const data = await response.json();
 		console.log(`   Vision API Raw Response Status: ${response.status}`);
 
-		// Enhanced Error Checking
+		// Error Checking
 		if (!response.ok) {
 			throw new Error(`Vision API HTTP Error: ${response.statusText}`);
 		}
@@ -246,144 +288,189 @@ async function callVisionApi(base64ImageData, apiKey) {
 			);
 		}
 
-		// Extract detected text
-		if (
-			data.responses[0].fullTextAnnotation &&
-			data.responses[0].fullTextAnnotation.text
-		) {
-			return data.responses[0].fullTextAnnotation.text;
+		// Extract structured block data
+		const annotation = data.responses[0].fullTextAnnotation;
+		if (annotation && annotation.pages && annotation.pages.length > 0) {
+			let extractedBlocks = [];
+			annotation.pages.forEach((page) => {
+				if (!page.blocks) return; // Skip page if no blocks
+				page.blocks.forEach((block) => {
+					let blockText = "";
+					let boundingBox = block.boundingBox || null;
+					if (!block.paragraphs) return; // Skip block if no paragraphs
+
+					block.paragraphs.forEach((para) => {
+						if (!para.words) return; // Skip para if no words
+						para.words.forEach((word) => {
+							if (!word.symbols) return; // Skip word if no symbols
+							// Reconstruct word/sentence from symbols
+							blockText += word.symbols.map((symbol) => symbol.text).join("");
+							// Add space if detected break type is SPACE or SURE_SPACE
+							const breakType = word.property?.detectedBreak?.type;
+							if (breakType === "SPACE" || breakType === "SURE_SPACE") {
+								blockText += " ";
+							}
+						});
+						// Add newline if paragraph break detected (might need refinement based on API response details)
+						const paraBreakType = para.property?.detectedBreak?.type;
+						if (
+							paraBreakType === "LINE_BREAK" ||
+							paraBreakType === "EOL_SURE_SPACE"
+						) {
+							blockText += "\n";
+						} else {
+							blockText += " "; // Space between paragraphs if no explicit break
+						}
+					});
+					blockText = blockText.trim().replace(/\s+\n/g, "\n"); // Cleanup whitespace
+
+					if (blockText && boundingBox) {
+						extractedBlocks.push({ text: blockText, boundingBox: boundingBox });
+					}
+				});
+			});
+			console.log(
+				`   Vision API Parsed ${extractedBlocks.length} blocks with text and boundingBox.`
+			);
+			return { blocks: extractedBlocks };
 		} else {
 			console.log(
-				`   Vision API Response did not contain fullTextAnnotation.text.`
+				`   Vision API Response did not contain structured text annotations.`
 			);
-			return null;
+			return { blocks: [] };
 		}
 	} catch (error) {
-		console.error(`   Error during Vision API call with Base64 data:`, error);
-		throw error; // Re-throw to be caught by handleImageProcessing
+		console.error(`   Error during Vision API call:`, error);
+		throw error; // Re-throw to be caught by handleImageProcessingPerBlock
 	}
 }
 
-// --- REVISED Google Cloud Translation API Call Function ---
+/**
+ * Calls Google Translate API.
+ * @param {string} text - Text to translate.
+ * @param {string} targetLang - Target language code (e.g., 'en').
+ * @param {string} apiKey - The Google Cloud API Key.
+ * @returns {Promise<string|null>} A promise resolving to the translated text or null.
+ */
 async function callTranslateApi(text, targetLang, apiKey) {
-	// Added apiKey parameter
-	// Use the passed apiKey
 	const url = `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`;
-	const body = {
-		q: text,
-		target: targetLang,
-	};
+	const body = { q: text, target: targetLang };
 
 	try {
 		const response = await fetch(url, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify(body),
+			/* ... fetch options ... */
 		});
 		const data = await response.json();
-
 		if (!response.ok || data.error) {
-			console.error("Translate API Error:", data.error || response.statusText);
-			throw new Error(
-				`Translate API Error: ${data.error?.message || response.statusText}`
-			);
+			throw new Error(/* ... */);
 		}
-
-		// Extract translated text
-		if (data.data && data.data.translations && data.data.translations[0]) {
+		if (data.data?.translations?.[0]) {
 			return data.data.translations[0].translatedText;
 		} else {
-			console.error("Translate API Error: Unexpected response format", data);
-			return null;
+			/* ... handle unexpected format ... */ return null;
 		}
 	} catch (error) {
-		console.error("Error calling Translate API:", error);
-		throw error; // Re-throw to be caught by handleImageProcessing
+		/* ... handle error ... */ throw error;
 	}
 }
 
-// --- Utility function to convert Blob to Base64 ---
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Converts a Blob object to a Base64 encoded data URL string.
+ * @param {Blob} blob - The Blob to convert.
+ * @returns {Promise<string>} A promise resolving with the data URL.
+ */
 function blobToBase64(blob) {
 	return new Promise((resolve, reject) => {
 		const reader = new FileReader();
 		reader.onerror = reject;
 		reader.onload = () => {
-			resolve(reader.result); // result is the data URL (e.g., "data:image/jpeg;base64,...")
+			resolve(reader.result);
 		};
 		reader.readAsDataURL(blob);
 	});
 }
 
-// --- Utility function to send errors back to content script ---
-function sendProcessingError(tabId, imageUrl, errorMessage) {
+/**
+ * Sends an error message back to the content script.
+ * @param {number} tabId - The target tab ID.
+ * @param {string} imageUrl - The original image URL associated with the error.
+ * @param {string} errorMessage - The error message text.
+ * @param {object} [boundingBox=null] - Optional bounding box if the error relates to a specific block.
+ */
+function sendProcessingError(
+	tabId,
+	imageUrl,
+	errorMessage,
+	boundingBox = null
+) {
 	chrome.tabs
 		.sendMessage(tabId, {
 			action: "translationError",
 			originalImageUrl: imageUrl,
 			error: errorMessage,
+			boundingBox: boundingBox,
 		})
 		.catch((e) =>
-			console.warn(
-				`   Error sending processing error message back to content script: ${e.message}`
-			)
+			console.warn(`   Error sending processing error message: ${e.message}`)
 		);
 }
 
-// --- Function to get active tab and send trigger message ---
+/**
+ * Queries for the active tab and sends the initial analysis trigger message
+ * to the content script, with retry logic.
+ * @param {number} attempt - The current attempt number.
+ */
 function getActiveTabAndSendMessage(attempt) {
 	const maxAttempts = 3;
-	const retryDelay = 100;
+	const retryDelay = 100; // milliseconds
 
 	chrome.tabs.query({ active: true }, (tabs) => {
-		// Using simplified query
 		console.log(
 			`BubbleTranslate: tabs.query({active: true}) attempt ${attempt} result:`,
 			tabs
 		);
-		// ... (rest of this function remains the same as previous version) ...
-		if (tabs && tabs.length > 0) {
+		if (tabs && tabs.length > 0 && tabs[0] && tabs[0].id) {
 			const targetTab = tabs[0];
-			if (targetTab && targetTab.id) {
-				const activeTabId = targetTab.id;
-				console.log(
-					`BubbleTranslate: Found active tab ID: ${activeTabId} in window ${targetTab.windowId} on attempt ${attempt}`
-				);
-				chrome.tabs.sendMessage(
-					activeTabId,
-					{ action: "triggerPageAnalysis" },
-					(response) => {
-						if (chrome.runtime.lastError) {
-							console.warn(
-								`BubbleTranslate: Could not send/receive message to/from content script in tab ${activeTabId}. Error: ${chrome.runtime.lastError.message}`
-							);
-							return;
-						}
-						console.log(
-							`BubbleTranslate: Received response from content script:`,
-							response
+			const activeTabId = targetTab.id;
+			console.log(
+				`BubbleTranslate: Found active tab ID: ${activeTabId} in window ${targetTab.windowId} on attempt ${attempt}`
+			);
+
+			chrome.tabs.sendMessage(
+				activeTabId,
+				{ action: "triggerPageAnalysis" },
+				(response) => {
+					if (chrome.runtime.lastError) {
+						console.warn(
+							`BubbleTranslate: Could not get response from content script for 'triggerPageAnalysis' in tab ${activeTabId}. Error: ${chrome.runtime.lastError.message}`
 						);
+						return;
 					}
-				);
-				console.log(
-					`BubbleTranslate: Sent 'triggerPageAnalysis' message to tab ${activeTabId}`
-				);
-			} else {
-				console.error(
-					`BubbleTranslate: Found tabs array, but first element has no ID on attempt ${attempt}. Tabs array:`,
-					tabs
-				);
-			}
+					console.log(
+						`BubbleTranslate: Received response from content script for 'triggerPageAnalysis':`,
+						response
+					);
+				}
+			);
+			console.log(
+				`BubbleTranslate: Sent 'triggerPageAnalysis' message to tab ${activeTabId}`
+			);
 		} else {
+			// Failed to find tab
 			if (attempt < maxAttempts) {
 				console.warn(
-					`BubbleTranslate: Failed to find ANY active tab ({active: true}) on attempt ${attempt}. Retrying in ${retryDelay}ms...`
+					`BubbleTranslate: Failed to find ANY active tab on attempt ${attempt}. Retrying in ${retryDelay}ms...`
 				);
 				setTimeout(() => {
 					getActiveTabAndSendMessage(attempt + 1);
 				}, retryDelay);
 			} else {
 				console.error(
-					`BubbleTranslate: Failed to find ANY active tab ({active: true}) after ${maxAttempts} attempts. Query result was empty.`
+					`BubbleTranslate: Failed to find ANY active tab after ${maxAttempts} attempts.`
 				);
 			}
 		}
