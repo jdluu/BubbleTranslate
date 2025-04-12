@@ -1,6 +1,6 @@
 // src/features/settings/options.ts
 import {
-	DEFAULT_STYLES, // Import the single source of truth for defaults
+	DEFAULT_STYLES,
 	STATUS_CLEAR_DELAY_MS,
 	MSG_SAVED_SUCCESS,
 	MSG_SAVE_ERROR,
@@ -9,7 +9,6 @@ import {
 import type { ExtensionSettings } from "@shared/types";
 
 // --- Helper Function: Converts RGBA string to Hex color and Alpha value. ---
-// Moved helper function definition before its first use.
 function rgbaToHexAlpha(rgba: string): { hex: string; alpha: number } {
 	const fallbackHex = "#ffffff"; // Define a fallback hex if parsing fails or default isn't hex
 	const fallbackAlpha = 0.85; // Define a fallback alpha
@@ -51,7 +50,6 @@ function rgbaToHexAlpha(rgba: string): { hex: string; alpha: number } {
 }
 
 // --- Derive default values needed specifically for UI elements ---
-// We need the default hex and alpha for the separate color/alpha inputs
 const defaultBgParts = rgbaToHexAlpha(DEFAULT_STYLES.bgColor);
 const DEFAULT_UI_VALUES = {
 	...DEFAULT_STYLES, // Include all original defaults
@@ -67,8 +65,8 @@ const elements = {
 	) as HTMLSelectElement,
 	fontSizeInput: document.getElementById("fontSize") as HTMLInputElement,
 	textColorInput: document.getElementById("textColor") as HTMLInputElement,
-	bgColorInput: document.getElementById("bgColor") as HTMLInputElement, // type="color"
-	bgAlphaInput: document.getElementById("bgAlpha") as HTMLInputElement, // type="range"
+	bgColorInput: document.getElementById("bgColor") as HTMLInputElement,
+	bgAlphaInput: document.getElementById("bgAlpha") as HTMLInputElement,
 	bgAlphaValueSpan: document.getElementById("bgAlphaValue") as HTMLSpanElement,
 	saveButton: document.getElementById("saveButton") as HTMLButtonElement,
 	statusElement: document.getElementById("status") as HTMLDivElement,
@@ -91,9 +89,7 @@ function hexAlphaToRgba(hex: string, alpha: number): string {
 	const r = (bigint >> 16) & 255;
 	const g = (bigint >> 8) & 255;
 	const b = bigint & 255;
-	// Clamp alpha between 0 and 1 and format
 	const clampedAlpha = Math.max(0, Math.min(1, alpha));
-	// Avoid unnecessary trailing zeros (e.g., 1.00 -> 1, 0.50 -> 0.5)
 	const formattedAlpha = Number(clampedAlpha.toFixed(2));
 	return `rgba(${r}, ${g}, ${b}, ${formattedAlpha})`;
 }
@@ -172,7 +168,7 @@ function saveOptions(): void {
 		fontSize: fontSize, // Store as string
 		textColor: textColor, // Store hex
 		bgColor: bgColorRgba, // Store combined RGBA string
-		// zIndex: DEFAULT_STYLES.zIndex // Include zIndex if you manage it
+		zIndex: DEFAULT_STYLES.zIndex, // Include zIndex if you manage it
 	};
 	// Clean optional fields if empty (like apiKey, though we validate it)
 	if (!settingsToSave.apiKey) delete settingsToSave.apiKey;
@@ -202,7 +198,7 @@ function restoreOptions(): void {
 		fontSize: DEFAULT_STYLES.fontSize,
 		textColor: DEFAULT_STYLES.textColor, // Default is hex
 		bgColor: DEFAULT_STYLES.bgColor, // Default is RGBA
-		// zIndex: DEFAULT_STYLES.zIndex, // If managing zIndex
+		zIndex: DEFAULT_STYLES.zIndex, // If managing zIndex
 	};
 
 	chrome.storage.local
@@ -212,10 +208,10 @@ function restoreOptions(): void {
 			console.log("Options retrieved from storage:", items);
 
 			// Populate UI elements using the retrieved values (which include defaults)
-			elements.apiKeyInput.value = items.apiKey ?? ""; // Still use ?? for safety
-			elements.targetLangSelect.value = items.targetLang!; // Exclamation mark asserts it's defined due to get() defaults
+			elements.apiKeyInput.value = items.apiKey ?? "";
+			elements.targetLangSelect.value = items.targetLang!;
 			elements.fontSizeInput.value = items.fontSize!;
-			elements.textColorInput.value = items.textColor!; // Set hex color
+			elements.textColorInput.value = items.textColor!;
 
 			// Handle background color (split RGBA from storage/defaults)
 			// items.bgColor will be defined because we passed a default

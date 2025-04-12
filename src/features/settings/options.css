@@ -133,7 +133,6 @@ button:hover {
 }
 
 .style-option input[type="text"] {
-	/* Keep if you have other text inputs */
 	width: 200px;
 	padding: 5px;
 	border: 1px solid #ccc;

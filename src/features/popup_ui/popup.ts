@@ -3,11 +3,9 @@ import { sendMessageToBackground } from "@core/messaging";
 import type {
 	StartTranslationMessage,
 	BackgroundResponse,
-} from "@shared/types"; // Use 'import type'
+} from "@shared/types";
 
 // --- Constants ---
-// Define the key used to store the API key in chrome.storage
-// IMPORTANT: This MUST match the key used in options.ts (which is 'apiKey' based on the input ID)
 const API_KEY_STORAGE_KEY = "apiKey";
 const STATUS_CLEAR_DELAY_MS = 3000; // Default duration for status messages
 const ERROR_DISPLAY_DURATION_MS = 5000; // Longer duration for errors
@@ -44,9 +42,9 @@ function showTemporaryStatus(
 	}
 
 	element.textContent = message;
-	element.className = "status"; // Reset classes, keep base 'status' class
+	element.className = "status";
 	if (type !== "info") {
-		element.classList.add(type); // Add 'error' or 'success'
+		element.classList.add(type);
 	}
 
 	// Set a timer to clear the message
@@ -55,7 +53,7 @@ function showTemporaryStatus(
 			// Only clear if the message hasn't been changed by another call
 			if (element.textContent === message) {
 				element.textContent = "";
-				element.className = "status"; // Clear type classes
+				element.className = "status";
 			}
 			statusClearTimer = null;
 		}, duration);
@@ -76,7 +74,7 @@ function initializePopup(): void {
 	) as HTMLButtonElement | null;
 	const statusMessage = document.getElementById(
 		"statusMessage"
-	) as HTMLParagraphElement | null; // Assuming it's a <p> or <div>
+	) as HTMLParagraphElement | null;
 
 	// --- Initial Checks ---
 	if (!translateButton) {
@@ -115,9 +113,9 @@ function initializePopup(): void {
 					statusMessage,
 					"API Key missing. Please set it in the extension options.",
 					"error",
-					ERROR_DISPLAY_DURATION_MS // Show key error longer
+					ERROR_DISPLAY_DURATION_MS
 				);
-				return; // IMPORTANT: Stop processing if the key is invalid
+				return;
 			}
 
 			// --- Key exists, proceed with translation request ---
@@ -125,12 +123,12 @@ function initializePopup(): void {
 				"BubbleTranslate Popup: API Key found. Proceeding with translation request..."
 			);
 
-			translateButton.disabled = true; // Disable button only when sending
+			translateButton.disabled = true;
 			// Show immediate feedback that we are starting
 			if (statusMessage) {
 				statusMessage.textContent = "Requesting analysis...";
-				statusMessage.className = "status"; // Clear previous error/success classes
-				if (statusClearTimer !== null) clearTimeout(statusClearTimer); // Clear pending clears
+				statusMessage.className = "status";
+				if (statusClearTimer !== null) clearTimeout(statusClearTimer);
 			}
 
 			const message: StartTranslationMessage = { action: "startTranslation" };

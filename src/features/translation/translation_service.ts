@@ -32,7 +32,6 @@ export async function processImageAndTranslateBlocks(
 
 	try {
 		// 1. Get API Key and Target Language from storage
-		// Type assertion needed as chrome.storage.local.get returns Promise<{[key: string]: any}>
 		const settings = (await chrome.storage.local.get([
 			"apiKey",
 			"targetLang",
@@ -80,7 +79,6 @@ export async function processImageAndTranslateBlocks(
 			tabId,
 			imageId,
 			error?.message || "Unknown processing error."
-			// No bounding box here, as it's an image-level error
 		);
 	}
 }
@@ -106,7 +104,7 @@ async function processSingleBlock(
 		console.warn(
 			`   [${imageId}] Skipping block ${index}: Missing text or boundingBox.`
 		);
-		return; // Skip block if essential data is missing
+		return;
 	}
 
 	const blockTextClean = block.text.replace(/\s+/g, " ").trim();
@@ -114,7 +112,7 @@ async function processSingleBlock(
 		console.warn(
 			`   [${imageId}] Skipping block ${index}: Empty text after cleanup.`
 		);
-		return; // Skip empty blocks
+		return;
 	}
 
 	try {

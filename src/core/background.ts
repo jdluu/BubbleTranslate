@@ -3,7 +3,7 @@ import { processImageAndTranslateBlocks } from "@features/translation/translatio
 import type {
 	BackgroundMessage,
 	BackgroundResponse,
-	MessageAction, // Keep for switch case type safety
+	MessageAction,
 	ProcessImageMessage,
 	TriggerAnalysisMessage,
 	AnalysisResponseMessage,
@@ -39,9 +39,6 @@ function setErrorBadge(
 /** Clears the badge text and background color. */
 function clearBadge(): void {
 	chrome.action.setBadgeText({ text: "" });
-	// Resetting background color might not be strictly necessary if text is empty,
-	// but can be done for completeness if desired.
-	// chrome.action.setBadgeBackgroundColor({ color: '#SomeDefaultColor' }); // Optional: Reset color
 	console.log("BubbleTranslate BG: Cleared badge.");
 }
 
@@ -83,14 +80,13 @@ chrome.runtime.onMessage.addListener(
 						"BubbleTranslate BG: Uncaught error during triggerAnalysis:",
 						error
 					);
-					setErrorBadge(); // Set error badge even for unexpected failures
+					setErrorBadge();
 				});
 				// Send an immediate acknowledgement back to the popup
 				sendResponse({
 					status: "received",
 					message: "Background acknowledged startTranslation.",
 				});
-				// triggerAnalysisOnTargetTab runs async, but we responded sync
 				break;
 
 			case ACTION_PROCESS_IMAGE:
@@ -108,8 +104,7 @@ chrome.runtime.onMessage.addListener(
 							`BubbleTranslate BG: Error processing image ${processMsg.imageId}:`,
 							error
 						);
-						// Optionally set a badge or notify differently for image processing errors
-						// setErrorBadge("IMG", "#FFA500"); // Example: Orange badge for image error
+						setErrorBadge("IMG", "#FFA500"); // Example: Orange badge for image error
 					});
 					isAsync = true; // Indicate background work continues
 				} else {
@@ -199,7 +194,7 @@ async function triggerAnalysisOnTargetTab(attempt: number): Promise<void> {
 					}`
 				);
 				// --- Set error badge on communication failure with content script ---
-				setErrorBadge("!"); // Use "!" for communication error maybe? Or stick to "ERR"
+				setErrorBadge("!");
 				// --------------------------------------------------------------------
 				// Re-throw the error so the outer catch handles retries/final failure
 				throw error;

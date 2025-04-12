@@ -36,7 +36,7 @@ export async function callVisionApiDetectBlocks(
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(body),
-		// signal: AbortSignal.timeout(15000) // Optional: 15 seconds timeout
+		signal: AbortSignal.timeout(15000),
 	});
 
 	// We expect a JSON response, potentially including error details
@@ -153,7 +153,7 @@ export async function callTranslateApi(
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(body),
-		// signal: AbortSignal.timeout(10000) // Optional: 10 seconds timeout
+		signal: AbortSignal.timeout(10000), // Optional: 10 seconds timeout
 	});
 
 	// Expecting JSON response, could be TranslateApiData or GoogleApiError

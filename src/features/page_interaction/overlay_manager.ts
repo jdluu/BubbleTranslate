@@ -127,7 +127,7 @@ export function displayBlockOverlay(
 		padding: "2px 4px",
 		pointerEvents: "none",
 		lineHeight: "1.2",
-	} as Partial<CSSStyleDeclaration>); // Type assertion for style properties
+	} as Partial<CSSStyleDeclaration>);
 
 	wrapper.appendChild(overlayDiv);
 }
@@ -228,8 +228,8 @@ function calculateOverlayPosition(
 	const scaleY = displayHeight / naturalHeight;
 
 	try {
-		const xs = vertices.map((v: Vertex) => v.x ?? 0); // Use nullish coalescing for safety
-		const ys = vertices.map((v: Vertex) => v.y ?? 0); // Use nullish coalescing for safety
+		const xs = vertices.map((v: Vertex) => v.x ?? 0);
+		const ys = vertices.map((v: Vertex) => v.y ?? 0);
 		const minX = Math.min(...xs);
 		const minY = Math.min(...ys);
 		const maxX = Math.max(...xs);
@@ -306,15 +306,12 @@ function ensurePositionedWrapper(
 			display: imgStyle.display || "inline-block",
 			// Transfer layout-affecting properties
 			margin: imgStyle.margin,
-			float: imgStyle.float || "none", // Ensure float is explicitly handled
-			// Copy width/height if they were explicitly set on the image? Optional.
-			// width: imgStyle.width,
-			// height: imgStyle.height,
+			float: imgStyle.float || "none",
 		} as Partial<CSSStyleDeclaration>);
 
 		// Reset img styles that were transferred
 		imgElement.style.margin = "0";
-		imgElement.style.float = "none"; // Reset float on image itself
+		imgElement.style.float = "none";
 
 		parent.insertBefore(wrapper, imgElement);
 		wrapper.appendChild(imgElement);

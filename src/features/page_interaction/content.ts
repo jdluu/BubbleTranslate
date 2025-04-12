@@ -37,7 +37,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener(
 	(
-		message: ContentScriptMessage | any, // Use 'any' for safety until all messages conform
+		message: ContentScriptMessage | any,
 		sender: chrome.runtime.MessageSender,
 		sendResponse: (response: AnalysisResponseMessage) => void
 	): boolean => {
@@ -59,7 +59,7 @@ chrome.runtime.onMessage.addListener(
 				// Reload styles just before analysis, ensuring freshness
 				loadAndApplyStyleSettings();
 				handlePageAnalysis(sendResponse);
-				return true; // Indicate async response from handlePageAnalysis
+				return true;
 
 			case "displayBlockTranslation":
 				// Type assertion for clarity
@@ -81,7 +81,7 @@ chrome.runtime.onMessage.addListener(
 						message
 					);
 				}
-				return false; // No response needed
+				return false;
 
 			case "translationError":
 				// Type assertion for clarity
@@ -99,7 +99,7 @@ chrome.runtime.onMessage.addListener(
 						message
 					);
 				}
-				return false; // No response needed
+				return false;
 
 			default:
 				console.log(
@@ -137,7 +137,7 @@ function handlePageAnalysis(
 				// Ensure image hasn't been processed already in this session
 				if (!img.hasAttribute(UNIQUE_ID_ATTR)) {
 					const imageId = `bt-${Date.now()}-${uniqueIdCounter++}`;
-					img.setAttribute(UNIQUE_ID_ATTR, imageId); // Tag the image
+					img.setAttribute(UNIQUE_ID_ATTR, imageId);
 
 					const message: ProcessImageMessage = {
 						action: "processImage",
@@ -165,7 +165,7 @@ function handlePageAnalysis(
 					)}...:`,
 					taggingError
 				);
-				pageAnalysisError = pageAnalysisError || taggingError; // Keep first error
+				pageAnalysisError = pageAnalysisError || taggingError;
 			}
 		});
 	} catch (findError: any) {

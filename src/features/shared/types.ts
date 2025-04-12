@@ -13,7 +13,7 @@ export interface ExtensionSettings {
 export interface OverlayStyleSettings {
 	fontSize: string;
 	textColor: string;
-	backgroundColor: string; // Note: This might be different from ExtensionSettings.bgColor if needed elsewhere
+	backgroundColor: string;
 	zIndex: string;
 }
 
