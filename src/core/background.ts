@@ -1,528 +1,244 @@
-// ============================================================================
-// BubbleTranslate - Background Script (Service Worker)
-// Author: jdluu
-// Version: 1.1.0
-// Description: Handles image processing requests from content scripts,
-//              interacts with Cloud APIs, and sends results back.
-// ============================================================================
-
-"use strict";
-
-console.log("BubbleTranslate: Background Service Worker Started.");
+// src/core/background.ts
+import { processImageAndTranslateBlocks } from "@features/translation/translation_service";
+import type {
+	BackgroundMessage,
+	BackgroundResponse,
+	MessageAction, // Keep for switch case type safety
+	ProcessImageMessage,
+	TriggerAnalysisMessage,
+	AnalysisResponseMessage,
+} from "@shared/types";
 
 // --- Constants ---
-const VISION_API_URL = "https://vision.googleapis.com/v1/images:annotate";
-const TRANSLATE_API_URL =
-	"https://translation.googleapis.com/language/translate/v2";
-const DEFAULT_TARGET_LANG = "en";
+const ACTION_START_TRANSLATION: MessageAction = "startTranslation";
+const ACTION_PROCESS_IMAGE: MessageAction = "processImage";
+const ACTION_TRIGGER_ANALYSIS: MessageAction = "triggerPageAnalysis";
+const MAX_TAB_QUERY_ATTEMPTS = 3;
+const TAB_QUERY_RETRY_DELAY_MS = 200;
+const BADGE_ERROR_TEXT = "ERR";
+const BADGE_ERROR_COLOR = "#FF0000"; // Red
 
-// Message action constants for consistency
-const ACTION_START_TRANSLATION = "startTranslation";
-const ACTION_PROCESS_IMAGE = "processImage";
-const ACTION_TRIGGER_ANALYSIS = "triggerPageAnalysis";
-const ACTION_DISPLAY_TRANSLATION = "displayBlockTranslation";
-const ACTION_TRANSLATION_ERROR = "translationError";
+console.log("BubbleTranslate BG: Service Worker Started.");
+
+// ============================================================================
+// Badge Utility Functions
+// ============================================================================
+
+/** Sets an error badge on the extension icon. */
+function setErrorBadge(
+	text: string = BADGE_ERROR_TEXT,
+	color: string = BADGE_ERROR_COLOR
+): void {
+	chrome.action.setBadgeText({ text: text });
+	chrome.action.setBadgeBackgroundColor({ color: color });
+	console.log(
+		`BubbleTranslate BG: Set error badge: Text='${text}', Color='${color}'`
+	);
+}
+
+/** Clears the badge text and background color. */
+function clearBadge(): void {
+	chrome.action.setBadgeText({ text: "" });
+	// Resetting background color might not be strictly necessary if text is empty,
+	// but can be done for completeness if desired.
+	// chrome.action.setBadgeBackgroundColor({ color: '#SomeDefaultColor' }); // Optional: Reset color
+	console.log("BubbleTranslate BG: Cleared badge.");
+}
 
 // ============================================================================
 // Event Listeners
 // ============================================================================
 
-/**
- * Main listener for messages from other parts of the extension (popup, content scripts).
- */
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-	// Log message details (optional, uncomment for debugging)
-	// console.groupCollapsed(`BubbleTranslate BG: Received message '${request.action}'`);
-	// console.log("Request:", request);
-	// console.log("Sender:", sender);
-	// console.groupEnd();
-
-	let isAsync = false; // Flag to indicate if sendResponse will be called asynchronously
-
-	switch (request.action) {
-		case ACTION_START_TRANSLATION:
-			console.log(
-				"BubbleTranslate BG: Received 'startTranslation', triggering content script analysis."
+chrome.runtime.onMessage.addListener(
+	(
+		request: BackgroundMessage | any,
+		sender: chrome.runtime.MessageSender,
+		sendResponse: (response: BackgroundResponse) => void
+	): boolean => {
+		// Basic validation of the incoming request
+		if (!request || typeof request.action !== "string") {
+			console.warn(
+				"BubbleTranslate BG: Received invalid message format.",
+				request
 			);
-			triggerAnalysisOnActiveTab(1); // Start analysis process
-			// Acknowledge receipt immediately to the popup
-			sendResponse({
-				status: "received",
-				message: "Background acknowledged startTranslation.",
-			});
-			break; // Essential break statement
+			return false;
+		}
 
-		case ACTION_PROCESS_IMAGE:
-			// This action comes from the content script for each image found
-			if (sender.tab && sender.tab.id && request.imageUrl && request.imageId) {
+		let isAsync = false;
+
+		switch (request.action) {
+			case ACTION_START_TRANSLATION:
 				console.log(
-					`BubbleTranslate BG: Queuing processing for image [${request.imageId}]`
+					"BubbleTranslate BG: Received 'startTranslation', triggering content script analysis."
 				);
-				// Process the image asynchronously. No immediate sync response needed here.
-				handleImageProcessingPerBlock(
-					request.imageUrl,
-					request.imageId, // Pass the unique ID
-					sender.tab.id
-				);
-				isAsync = true; // Indicate that processing is happening in the background
-			} else {
-				console.error(
-					"BubbleTranslate BG: Invalid 'processImage' request. Missing tab ID, image URL, or image ID.",
-					request
-				);
-				// Optionally send an error response back if appropriate/possible
-			}
-			break; // Essential break statement
+				// --- Clear any previous error badge on new attempt ---
+				clearBadge();
+				// ----------------------------------------------------
 
-		default:
-			console.log(
-				`BubbleTranslate BG: Received unknown action: ${request.action}`
-			);
-			// Optionally send a response indicating the action is unknown
-			sendResponse({ status: "error", message: "Unknown action" });
-			break; // Essential break statement
+				// Call the function to find the tab and send the message
+				triggerAnalysisOnTargetTab(1).catch((error) => {
+					// Catch potential unhandled promise rejection from triggerAnalysisOnTargetTab
+					// This might happen if an error occurs outside the internal retry catch
+					console.error(
+						"BubbleTranslate BG: Uncaught error during triggerAnalysis:",
+						error
+					);
+					setErrorBadge(); // Set error badge even for unexpected failures
+				});
+				// Send an immediate acknowledgement back to the popup
+				sendResponse({
+					status: "received",
+					message: "Background acknowledged startTranslation.",
+				});
+				// triggerAnalysisOnTargetTab runs async, but we responded sync
+				break;
+
+			case ACTION_PROCESS_IMAGE:
+				const processMsg = request as ProcessImageMessage;
+				if (sender.tab?.id && processMsg.imageUrl && processMsg.imageId) {
+					console.log(
+						`BubbleTranslate BG: Queuing processing for image [${processMsg.imageId}] in tab [${sender.tab.id}]`
+					);
+					processImageAndTranslateBlocks(
+						processMsg.imageUrl,
+						processMsg.imageId,
+						sender.tab.id
+					).catch((error) => {
+						console.error(
+							`BubbleTranslate BG: Error processing image ${processMsg.imageId}:`,
+							error
+						);
+						// Optionally set a badge or notify differently for image processing errors
+						// setErrorBadge("IMG", "#FFA500"); // Example: Orange badge for image error
+					});
+					isAsync = true; // Indicate background work continues
+				} else {
+					console.error(
+						"BubbleTranslate BG: Invalid 'processImage' request received.",
+						request
+					);
+				}
+				break;
+
+			default:
+				console.log(
+					`BubbleTranslate BG: Received unhandled action: ${request.action}`
+				);
+				break;
+		}
+
+		// Return true if any background async work relevant to the listener's response might occur.
+		return isAsync;
 	}
-
-	// Return true *only* if we are performing an async operation
-	// that might use sendResponse later (although in this refactor,
-	// responses for async ops like processImage are sent via tabs.sendMessage).
-	// For processImage, we don't use sendResponse, so returning false or isAsync is fine.
-	// Returning true generally keeps the message channel open. Let's return isAsync.
-	return isAsync;
-});
+);
 
 console.log("BubbleTranslate BG: Message listener added.");
 
 // ============================================================================
-// Core Image Processing Logic
+// Trigger Logic (Revised with Badge Handling)
 // ============================================================================
 
 /**
- * Orchestrates the processing for a single image:
- * Fetches settings, image data, calls OCR/Translate APIs for text blocks,
- * and sends results (or errors) back to the content script.
- * @param {string} imageUrl - The URL of the image to process.
- * @param {string} imageId - The unique identifier assigned to this image by the content script.
- * @param {number} tabId - The ID of the tab where the image is located.
+ * Attempts to find the last focused, normal browser window and trigger analysis
+ * on its active tab. Includes retry logic and badge notifications.
  */
-async function handleImageProcessingPerBlock(imageUrl, imageId, tabId) {
-	console.log(`BubbleTranslate BG: Starting processing for image [${imageId}]`);
-
+async function triggerAnalysisOnTargetTab(attempt: number): Promise<void> {
+	// Returns Promise<void>
+	console.log(
+		`BubbleTranslate BG: Attempting to find target tab (Attempt ${attempt}/${MAX_TAB_QUERY_ATTEMPTS}).`
+	);
 	try {
-		// 1. Get API Key and Target Language from storage
-		const settings = await chrome.storage.local.get(["apiKey", "targetLang"]);
-
-		const apiKey = settings.apiKey;
-		const targetLang = settings.targetLang || DEFAULT_TARGET_LANG;
-
-		if (!apiKey) {
-			throw new Error("API Key not configured in extension options.");
-		}
-		console.log(`   [${imageId}] Using Target Language: ${targetLang}`);
-
-		// 2. Fetch image data and convert to Base64
-		console.log(`   [${imageId}] Fetching image data...`);
-		const response = await fetch(imageUrl);
-		if (!response.ok) {
-			throw new Error(
-				`Failed to fetch image: ${response.status} ${response.statusText}`
-			);
-		}
-		const imageBlob = await response.blob();
-		const base64ImageData = await blobToBase64(imageBlob);
-		const cleanBase64 = base64ImageData.split(",")[1]; // Remove data URL prefix
-		console.log(
-			`   [${imageId}] Image data fetched (Base64 length: ${
-				cleanBase64?.length || 0
-			})`
-		);
-		if (!cleanBase64) {
-			throw new Error("Failed to extract Base64 data from image.");
-		}
-
-		// 3. Call OCR to detect text blocks
-		const visionResult = await callVisionApiDetectBlocks(cleanBase64, apiKey);
-
-		if (!visionResult?.blocks || visionResult.blocks.length === 0) {
-			console.log(`   [${imageId}] No text blocks found by OCR.`);
-			// No error needed if no text is found, just finish processing.
-			return;
-		}
-
-		console.log(
-			`   [${imageId}] Vision API found ${visionResult.blocks.length} text blocks.`
-		);
-
-		// 4. Process each block: Translate and send result back
-		const blockProcessingPromises = visionResult.blocks.map(
-			async (block, index) => {
-				if (!block.text || !block.boundingBox) {
-					console.warn(
-						`   [${imageId}] Skipping block ${index}: Missing text or boundingBox.`
-					);
-					return; // Skip block if essential data is missing
-				}
-
-				const blockTextClean = block.text.replace(/\s+/g, " ").trim();
-				if (!blockTextClean) {
-					console.warn(
-						`   [${imageId}] Skipping block ${index}: Empty text after cleanup.`
-					);
-					return; // Skip empty blocks
-				}
-
-				try {
-					console.log(
-						`      [${imageId}] Translating block ${index}: "${blockTextClean.substring(
-							0,
-							40
-						)}..."`
-					);
-					const translatedText = await callTranslateApi(
-						blockTextClean,
-						targetLang,
-						apiKey
-					);
-
-					if (translatedText) {
-						console.log(
-							`      [${imageId}] Sending translation for block ${index} to tab ${tabId}`
-						);
-						// Send result for THIS BLOCK back to content script
-						safeSendMessage(tabId, {
-							action: ACTION_DISPLAY_TRANSLATION,
-							imageId: imageId, // Use the unique ID
-							boundingBox: block.boundingBox,
-							translatedText: translatedText,
-						});
-					} else {
-						// If translation returns null/empty but no error was thrown
-						throw new Error("Translation API returned empty result.");
-					}
-				} catch (blockError) {
-					console.error(
-						`      [${imageId}] Error processing block ${index}:`,
-						blockError
-					);
-					// Send a specific error message for this block
-					sendProcessingError(
-						tabId,
-						imageId,
-						`Block ${index}: ${
-							blockError.message || "Unknown translation error"
-						}`,
-						block.boundingBox // Send BB for context
-					);
-				}
-			}
-		);
-
-		// Wait for all block translations to settle (complete or fail)
-		await Promise.allSettled(blockProcessingPromises);
-		console.log(`   [${imageId}] Finished processing all blocks.`);
-	} catch (error) {
-		// Catch errors from setup (settings, fetch, OCR) or unexpected issues
-		console.error(
-			`BubbleTranslate BG: Critical error processing image [${imageId}]:`,
-			error
-		);
-		// Send a general error message for the whole image
-		sendProcessingError(
-			tabId,
-			imageId,
-			error.message || "Unknown processing error."
-			// No bounding box here, as it's an image-level error
-		);
-	}
-}
-
-// ============================================================================
-// API Call Functions
-// ============================================================================
-
-/**
- * Calls Google Vision API (DOCUMENT_TEXT_DETECTION) to detect text blocks.
- * @param {string} base64ImageData - Base64 encoded image data (without prefix).
- * @param {string} apiKey - The Google Cloud API Key.
- * @returns {Promise<{ blocks: { text: string, boundingBox: object }[] }>}
- *          A promise resolving to an object containing an array of blocks.
- *          Returns empty array if no text detected or in case of API error format issues.
- * @throws {Error} If the API call fails or returns a significant error.
- */
-async function callVisionApiDetectBlocks(base64ImageData, apiKey) {
-	const url = `${VISION_API_URL}?key=${apiKey}`;
-	const body = {
-		requests: [
-			{
-				image: { content: base64ImageData },
-				features: [{ type: "DOCUMENT_TEXT_DETECTION" }],
-				// Consider adding language hints if source language is often known, e.g., ["ja", "en"]
-				// imageContext: { languageHints: ["ja"] }
-			},
-		],
-	};
-
-	console.log(`   Calling Vision API...`);
-	const response = await fetch(url, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-		// Optional: Add a timeout signal
-		// signal: AbortSignal.timeout(15000) // 15 seconds timeout
-	});
-
-	const data = await response.json();
-	// console.log(`   Vision API Raw Response Status: ${response.status}`, data); // Verbose logging
-
-	if (!response.ok) {
-		const errorDetail = data?.error?.message || response.statusText;
-		throw new Error(`Vision API HTTP Error ${response.status}: ${errorDetail}`);
-	}
-	if (!data.responses || data.responses.length === 0) {
-		console.warn("   Vision API returned empty responses array.");
-		return { blocks: [] }; // Not technically an error, but no data
-	}
-	const visionResponse = data.responses[0];
-	if (visionResponse.error) {
-		throw new Error(`Vision API Error: ${visionResponse.error.message}`);
-	}
-
-	// Extract structured block data from fullTextAnnotation
-	const annotation = visionResponse.fullTextAnnotation;
-	let extractedBlocks = [];
-
-	if (annotation?.pages?.[0]?.blocks) {
-		annotation.pages[0].blocks.forEach((block) => {
-			let blockText = "";
-			const boundingBox = block.boundingBox || null; // Get block's bounding box
-
-			block.paragraphs?.forEach((para) => {
-				para.words?.forEach((word) => {
-					const wordText = word.symbols?.map((s) => s.text).join("") || "";
-					blockText += wordText;
-					// Add space based on detected break type after the word
-					const breakType = word.property?.detectedBreak?.type;
-					if (
-						breakType === "SPACE" ||
-						breakType === "SURE_SPACE" ||
-						breakType === "EOL_SURE_SPACE" // Treat end-of-line space as space
-					) {
-						blockText += " ";
-					} else if (breakType === "LINE_BREAK") {
-						// Optionally add newline, but often space is better for translation context
-						// blockText += "\n";
-						blockText += " "; // Prefer space over newline for continuity
-					}
-				});
-				// Add space between paragraphs if needed (handled by word breaks usually)
-				// blockText += " "; // Maybe unnecessary if word breaks are sufficient
-			});
-
-			blockText = blockText.trim(); // Trim whitespace from the constructed block text
-			if (blockText && boundingBox) {
-				extractedBlocks.push({ text: blockText, boundingBox: boundingBox });
-			}
+		const lastFocusedWindow = await chrome.windows.getLastFocused({
+			populate: false,
+			windowTypes: ["normal"],
 		});
-		console.log(
-			`   Vision API Parsed ${extractedBlocks.length} blocks with text and boundingBox.`
-		);
-	} else {
-		console.log(
-			`   Vision API: No 'fullTextAnnotation' found or no blocks within.`
-		);
-		// This could happen if the image contains no text.
-	}
 
-	return { blocks: extractedBlocks };
-}
-
-/**
- * Calls Google Translate API to translate text.
- * @param {string} text - Text to translate.
- * @param {string} targetLang - Target language code (e.g., 'en').
- * @param {string} apiKey - The Google Cloud API Key.
- * @returns {Promise<string|null>} A promise resolving to the translated text or null if translation fails.
- * @throws {Error} If the API call fails or returns a significant error.
- */
-async function callTranslateApi(text, targetLang, apiKey) {
-	// Prevent API calls for empty strings
-	if (!text || !text.trim()) {
-		return null;
-	}
-
-	const url = `${TRANSLATE_API_URL}?key=${apiKey}`;
-	const body = {
-		q: text,
-		target: targetLang,
-		format: "text", // Explicitly request plain text format
-	};
-
-	// console.log(`      Calling Translate API for target '${targetLang}'...`); // Optional log
-	const response = await fetch(url, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-		// Optional: Add a timeout signal
-		// signal: AbortSignal.timeout(10000) // 10 seconds timeout
-	});
-
-	const data = await response.json();
-	// console.log(`      Translate API Raw Response Status: ${response.status}`, data); // Verbose logging
-
-	if (!response.ok) {
-		const errorDetail = data?.error?.message || response.statusText;
-		throw new Error(
-			`Translate API HTTP Error ${response.status}: ${errorDetail}`
-		);
-	}
-	if (data.error) {
-		throw new Error(`Translate API Error: ${data.error.message}`);
-	}
-
-	const translation = data?.data?.translations?.[0]?.translatedText;
-	if (translation) {
-		// Basic HTML entity decoding (Translate API might return entities like ')
-		// Use DOMParser for robust decoding if needed, but requires offscreen document in SW.
-		// For simple cases:
-		return translation
-			.replace(/"/g, '"')
-			.replace(/'/g, "'")
-			.replace(/&/g, "&")
-			.replace(/</g, "<")
-			.replace(/>/g, ">");
-	} else {
-		console.warn(
-			"      Translate API response structure unexpected or missing translation:",
-			data
-		);
-		return null; // Indicate translation was not found in the response
-	}
-}
-
-// ============================================================================
-// Utility Functions
-// ============================================================================
-
-/**
- * Converts a Blob object to a Base64 encoded data URL string.
- * @param {Blob} blob - The Blob to convert.
- * @returns {Promise<string>} A promise resolving with the data URL.
- * @throws {Error} If the FileReader encounters an error.
- */
-function blobToBase64(blob) {
-	return new Promise((resolve, reject) => {
-		const reader = new FileReader();
-		reader.onerror = (event) => {
-			// Provide more context on reader error
-			reject(
-				new Error(
-					`FileReader error: ${event.target.error?.message || "Unknown error"}`
-				)
+		if (!lastFocusedWindow?.id || lastFocusedWindow.state === "minimized") {
+			throw new Error(
+				`Last focused window not found, invalid, or minimized (ID: ${lastFocusedWindow?.id}, State: ${lastFocusedWindow?.state}).`
 			);
-		};
-		reader.onload = () => {
-			// result is the Data URL string
-			resolve(reader.result);
-		};
-		reader.readAsDataURL(blob);
-	});
-}
-
-/**
- * Safely sends a message to a specific tab, catching potential errors
- * (e.g., if the tab was closed or the content script isn't ready).
- * @param {number} tabId - The target tab ID.
- * @param {object} message - The message object to send.
- */
-function safeSendMessage(tabId, message) {
-	chrome.tabs.sendMessage(tabId, message).catch((error) => {
-		// Common errors: "Could not establish connection..." or "No receiving end..."
-		console.warn(
-			`BubbleTranslate BG: Failed to send message to tab ${tabId} (Action: ${message.action}). Error: ${error.message}`
-		);
-		// Decide if further action is needed, e.g., retry or log persistence
-	});
-}
-
-/**
- * Sends an error message back to the content script associated with a specific image.
- * @param {number} tabId - The target tab ID.
- * @param {string} imageId - The unique ID of the image associated with the error.
- * @param {string} errorMessage - The error message text.
- * @param {object} [boundingBox=null] - Optional bounding box for block-specific errors.
- */
-function sendProcessingError(tabId, imageId, errorMessage, boundingBox = null) {
-	safeSendMessage(tabId, {
-		action: ACTION_TRANSLATION_ERROR,
-		imageId: imageId, // Use the unique ID
-		error: errorMessage,
-		boundingBox: boundingBox,
-	});
-}
-
-/**
- * Queries for the active tab in the current window and sends the analysis trigger message.
- * Includes retry logic in case the tab query fails initially.
- * @param {number} attempt - The current attempt number.
- */
-function triggerAnalysisOnActiveTab(attempt) {
-	const maxAttempts = 3;
-	const retryDelay = 150; // milliseconds
-
-	// Query for the active tab in the *currently focused* window
-	// This is generally more reliable when triggered from a popup action.
-	chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-		if (chrome.runtime.lastError) {
-			console.error(
-				"BubbleTranslate BG: Error querying tabs:",
-				chrome.runtime.lastError.message
-			);
-			// Handle error appropriately, maybe stop trying
-			return;
 		}
+		console.log(
+			`BubbleTranslate BG: Found last focused normal window ID: ${lastFocusedWindow.id}`
+		);
 
-		if (tabs && tabs.length > 0 && tabs[0]?.id) {
-			const targetTab = tabs[0];
-			const activeTabId = targetTab.id;
+		const tabs = await chrome.tabs.query({
+			active: true,
+			windowId: lastFocusedWindow.id,
+		});
+
+		const activeTab = tabs?.[0];
+		const activeTabId = activeTab?.id;
+
+		if (activeTabId !== undefined) {
 			console.log(
-				`BubbleTranslate BG: Found active tab ${activeTabId} in window ${targetTab.windowId}. Sending trigger.`
+				`BubbleTranslate BG: Found active tab ${activeTabId} in window ${lastFocusedWindow.id}. Sending trigger.`
 			);
+			const message: TriggerAnalysisMessage = { action: "triggerPageAnalysis" };
 
-			// Send the trigger message and handle potential immediate errors/response
-			chrome.tabs.sendMessage(
-				activeTabId,
-				{ action: ACTION_TRIGGER_ANALYSIS },
-				(response) => {
-					// This callback executes when the content script calls sendResponse
-					if (chrome.runtime.lastError) {
-						// Error sending or content script didn't respond / disconnected
-						console.warn(
-							`BubbleTranslate BG: No response or error sending '${ACTION_TRIGGER_ANALYSIS}' to tab ${activeTabId}. Error: ${chrome.runtime.lastError.message}`
-						);
-					} else {
-						// Got a response from the content script's handler
-						console.log(
-							`BubbleTranslate BG: Content script response for '${ACTION_TRIGGER_ANALYSIS}':`,
-							response
-						);
-					}
-				}
-			);
-		} else {
-			// Failed to find a suitable tab in the current window
-			if (attempt < maxAttempts) {
+			try {
+				const response = await chrome.tabs.sendMessage<
+					TriggerAnalysisMessage,
+					AnalysisResponseMessage
+				>(activeTabId, message);
+
+				console.log(
+					`BubbleTranslate BG: Content script response for '${message.action}' from tab ${activeTabId}:`,
+					response
+				);
+				// --- Success: Clear badge if it was previously set ---
+				clearBadge();
+				// -----------------------------------------------------
+			} catch (error) {
+				// Error sending message or receiving response (e.g., content script not ready)
 				console.warn(
-					`BubbleTranslate BG: Could not find active tab in currentWindow (Attempt ${attempt}/${maxAttempts}). Retrying...`
+					`BubbleTranslate BG: Could not send/receive '${
+						message.action
+					}' to tab ${activeTabId}. Error: ${
+						error instanceof Error ? error.message : String(error)
+					}`
 				);
-				setTimeout(() => {
-					triggerAnalysisOnActiveTab(attempt + 1);
-				}, retryDelay * attempt); // Increase delay slightly on retries
-			} else {
-				console.error(
-					`BubbleTranslate BG: Failed to find active tab in currentWindow after ${maxAttempts} attempts. Cannot trigger analysis.`
-				);
-				// Optionally notify the user via popup or badge?
+				// --- Set error badge on communication failure with content script ---
+				setErrorBadge("!"); // Use "!" for communication error maybe? Or stick to "ERR"
+				// --------------------------------------------------------------------
+				// Re-throw the error so the outer catch handles retries/final failure
+				throw error;
 			}
+		} else {
+			throw new Error(`No active tab found in window ${lastFocusedWindow.id}.`);
 		}
-	});
+	} catch (error) {
+		// Catch errors from window/tab queries or re-thrown errors from sendMessage
+		console.warn(
+			`BubbleTranslate BG: Error finding/messaging tab (Attempt ${attempt}): ${
+				error instanceof Error ? error.message : String(error)
+			}`
+		);
+
+		if (attempt < MAX_TAB_QUERY_ATTEMPTS) {
+			console.log(
+				`BubbleTranslate BG: Retrying in ${
+					TAB_QUERY_RETRY_DELAY_MS * attempt
+				}ms...`
+			);
+			await new Promise((resolve) =>
+				setTimeout(resolve, TAB_QUERY_RETRY_DELAY_MS * attempt)
+			);
+			// Await the retry attempt. If it throws, it will propagate up if not caught later.
+			await triggerAnalysisOnTargetTab(attempt + 1);
+		} else {
+			console.error(
+				`BubbleTranslate BG: Failed to find and message active tab after ${MAX_TAB_QUERY_ATTEMPTS} attempts.`
+			);
+			// --- FINAL FAILURE: Set the error badge ---
+			setErrorBadge(); // Use default "ERR" and red color
+			// --------------------------------------------
+			// Optional: Throw error here if the caller (onMessage listener) needs to know about the final failure
+			throw new Error(
+				`Failed final attempt to trigger analysis: ${
+					error instanceof Error ? error.message : String(error)
+				}`
+			);
+		}
+	}
 }

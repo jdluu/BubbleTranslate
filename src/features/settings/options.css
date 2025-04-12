@@ -22,19 +22,28 @@ h1 {
 	border-radius: 4px;
 }
 
+.option-item h2 {
+	margin-top: 0;
+	margin-bottom: 15px;
+	border-bottom: 1px solid #eee;
+	padding-bottom: 5px;
+}
+
 .option-item label {
-	display: block;
+	/* display: block; */ /* Let style-option handle layout */
 	margin-bottom: 8px;
 	font-weight: bold;
 	color: #555;
 }
 
-.option-item input[type="password"] {
-	width: calc(100% - 12px); /* Adjust width considering padding */
+.option-item input[type="password"],
+.option-item select {
+	width: calc(100% - 16px); /* Adjust width considering padding */
 	padding: 8px;
 	border: 1px solid #ccc;
 	border-radius: 3px;
 	font-size: 14px;
+	box-sizing: border-box; /* Include padding in width */
 }
 
 .option-item .description {
@@ -69,25 +78,64 @@ button:hover {
 	text-align: center;
 	font-weight: bold;
 	min-height: 1.2em; /* Reserve space */
+	transition: color 0.3s ease;
 }
 
-/* Add this to options.css */
+/* Styles for status messages */
+.status-message.success {
+	color: #28a745; /* Green */
+}
+.status-message.error {
+	color: #dc3545; /* Red */
+}
+
+/* Styles for appearance options */
 .style-option {
 	margin-bottom: 15px;
+	display: flex; /* Use flexbox for alignment */
+	align-items: center; /* Vertically align items */
+	flex-wrap: wrap; /* Allow wrapping if needed */
 }
 .style-option label {
-	display: inline-block;
-	width: 180px; /* Adjust as needed */
+	/* display: inline-block; */ /* Remove this */
+	width: 160px; /* Fixed width for labels */
 	margin-right: 10px;
+	flex-shrink: 0; /* Prevent label from shrinking */
 }
 .style-option input[type="number"] {
-	width: 60px;
+	width: 70px;
+	padding: 5px;
+	border: 1px solid #ccc;
+	border-radius: 3px;
 }
 .style-option input[type="color"] {
 	vertical-align: middle;
-}
-.style-option input[type="text"] {
-	width: 200px;
+	height: 30px; /* Make color picker a bit bigger */
+	width: 50px;
+	padding: 2px; /* Add minimal padding */
+	border: 1px solid #ccc;
+	border-radius: 3px;
 }
 
-/* Existing styles ... */
+/* Styles for Alpha Slider */
+.style-option input[type="range"] {
+	flex-grow: 1; /* Allow slider to take remaining space */
+	margin-right: 10px;
+	max-width: 250px; /* Limit slider width */
+	cursor: pointer;
+}
+.style-option .alpha-value {
+	font-size: 12px;
+	font-weight: bold;
+	color: #555;
+	min-width: 30px; /* Space for value like "0.75" */
+	text-align: right;
+}
+
+.style-option input[type="text"] {
+	/* Keep if you have other text inputs */
+	width: 200px;
+	padding: 5px;
+	border: 1px solid #ccc;
+	border-radius: 3px;
+}

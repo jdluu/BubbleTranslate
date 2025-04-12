@@ -29,7 +29,7 @@ BUBBLETRANSLATE/
 │ │
 │ ├── features/ # Distinct functional areas of the extension
 │ │ ├── translation/ # Logic related to the translation process itself
-│ │ │ ├── translation.service.ts # Orchestrates fetch->OCR->translate (runs in background)
+│ │ │ ├── translation_service.ts # Orchestrates fetch->OCR->translate (runs in background)
 │ │ │ ├── api_client.ts # Handles Vision/Translate API calls
 │ │ │ └── image_processor.ts # Base64 conversion, image data handling
 │ │ │

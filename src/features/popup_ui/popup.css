@@ -48,6 +48,16 @@ button:active {
 .status {
 	margin-top: 15px;
 	font-size: 12px;
-	color: #666;
-	min-height: 1em; /* Reserve space even when empty */
+	color: #666; /* Default/info color */
+	min-height: 1.2em; /* Reserve slightly more space */
+	font-weight: bold;
+	transition: color 0.3s ease;
+}
+
+.status.success {
+	color: #28a745; /* Green for success */
+}
+
+.status.error {
+	color: #dc3545; /* Red for error */
 }

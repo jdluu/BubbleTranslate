@@ -17,6 +17,7 @@
 				name="apiKey"
 				size="60"
 				placeholder="Paste your API key here"
+				required
 			/>
 			<span class="description"
 				>Required for OCR and Translation features. Obtain from your Google
@@ -27,6 +28,7 @@
 		<div class="option-item">
 			<label for="targetLanguage">Translate To Language:</label>
 			<select id="targetLanguage" name="targetLanguage">
+				<!-- Default selected can be set via JS -->
 				<option value="en">English</option>
 				<option value="es">Spanish</option>
 				<option value="fr">French</option>
@@ -56,28 +58,37 @@
 					min="8"
 					max="30"
 					step="1"
+					required
 				/>
 			</div>
 
 			<div class="style-option">
 				<label for="textColor">Text Color:</label>
-				<input type="color" id="textColor" name="textColor" />
+				<input type="color" id="textColor" name="textColor" required />
 			</div>
 
 			<div class="style-option">
-				<label for="bgColor">Background Color (RGBA):</label>
-				<input
-					type="text"
-					id="bgColor"
-					name="bgColor"
-					size="30"
-					placeholder="e.g., rgba(0, 0, 0, 0.75)"
-				/>
-				<span class="description"
-					>Use RGBA format for transparency (e.g., `rgba(0, 0, 0, 0.75)` for
-					semi-transparent black).</span
-				>
+				<label for="bgColor">Background Color:</label>
+				<!-- Label updated -->
+				<input type="color" id="bgColor" name="bgColor" required />
 			</div>
+
+			<!-- New Alpha Slider -->
+			<div class="style-option">
+				<label for="bgAlpha">Background Alpha:</label>
+				<input
+					type="range"
+					id="bgAlpha"
+					name="bgAlpha"
+					min="0"
+					max="1"
+					step="0.05"
+					required
+				/>
+				<span class="alpha-value" id="bgAlphaValue"></span>
+				<!-- To display current alpha -->
+			</div>
+			<!-- End New Alpha Slider -->
 		</div>
 		<div class="button-container">
 			<button id="saveButton">Save Settings</button>
@@ -85,6 +96,7 @@
 
 		<div id="status" class="status-message"></div>
 
-		<script src="options.js"></script>
+		<!-- Correct path assuming options.bundle.js is in the same dir as options.html in dist -->
+		<script src="../../options.bundle.js"></script>
 	</body>
 </html>
