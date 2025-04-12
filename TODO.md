@@ -1,68 +1,63 @@
-# BubbleTranslate - Feature Checklist & TODO
+# BubbleTranslate TODO List
 
-## Phase 1: MVP (Minimum Viable Product)
+This document outlines potential improvements, new features, and bug fixes planned for the BubbleTranslate extension.
 
-- [x] **Project Setup:**
-  - [x] Initialize Git repository (`.git`)
-  - [x] Create `.gitignore` file
-  - [x] Create `README.md` (this file)
-  - [x] Create `TODO.md` (this file)
-  - [x] Create basic file structure (`manifest.json`, `icons/`, `popup/`, `content/`, `background/`)
-  - [x] Create placeholder icons (16, 48, 128 px)
-- [x] **Manifest (`manifest.json`):**
-  - [x] Define `manifest_version: 3`, `name: BubbleTranslate`, `version`, `description`
-  - [x] Request necessary `permissions` (`activeTab`, `scripting`, potentially `storage`)
-  - [x] Define `action` (popup: `popup/popup.html`, default icons)
-  - [x] Define `content_scripts` (matching URLs, `content/content.js`, `content/content.css`)
-  - [x] Define `background` service worker (`background/background.js`)
-- [x] **Popup UI (`popup/`):**
-  - [x] Create basic `popup.html` structure
-  - [x] Add a "Translate Page" button to `popup.html`
-  - [x] Basic styling in `popup.css`
-  - [x] Implement `popup.js` to send a message to background/content script on button click
-- [x] **Content Script (`content/`):**
-  - [x] Implement `content.js` listener for messages from popup/background
-  - [x] **Image Detection:** Implement basic logic in `content.js` to find `<img>` elements larger than a set size.
-  - [x] Send found image URLs to `background.js`.
-  - [x] **Overlay Display:** Implement logic in `content.js` to create simple overlay elements near images.
-  - [x] Add basic styling for overlays in `content.css`.
-  - [x] Implement message listener in `content.js` to receive translations from `background.js` and update overlays.
-- [x] **Background Script (`background/`):**
-  - [x] Implement `background.js` listener for messages (from popup and content script).
-  - [x] **API Integration:** Implement `Workspace` calls to Google Cloud Vision AI (OCR).
-  - [x] **API Integration:** Implement `Workspace` calls to Google Cloud Translation API (Translate text from OCR).
-  - [x] **API Key Management:** Add placeholder/warning for API Keys (DO NOT COMMIT KEYS).
-  - [x] Send translation results back to the correct `content.js` tab.
-  - [x] Handle basic error states from API calls.
-- [x] **Testing:**
-  - [x] Load extension unpacked in Chrome.
-  - [x] Test on various pages with images/manga panels.
-  - [x] Debug using DevTools for popup, content script, and service worker.
+## Core Functionality Enhancements
 
-## Phase 2: Core Improvements
+- [ ] **Selective Image Translation:** Implement a way for users to translate only specific images they choose (e.g., via a click, context menu, or hover button) instead of processing all detected images on the page.
+- [ ] **Caching:** Implement caching for OCR results and translations (potentially based on image URL or content hash) to avoid redundant API calls and speed up repeated views of the same page/images. Consider using `chrome.storage.local` or IndexedDB.
+- [ ] **Automatic Source Language Detection:** Utilize the Translation API's detection capability (or the Vision API's language hints) to automatically determine the source language instead of assuming a single source or requiring user input (though keep manual override).
+- [ ] **Improved Text Block Consolidation:** Enhance logic to better group related OCR text blocks (e.g., multi-line bubbles) before translation for more coherent results.
+- [ ] **Vertical Text Support:** Improve OCR detection and overlay rendering to better handle vertical text common in some languages/formats (e.g., Japanese Manga). May require specific hints to the Vision API.
+- [ ] **Alternative Service Support:** Refactor API clients (`api_client.ts`) to potentially support alternative OCR or Translation services in the future (e.g., Tesseract.js for offline OCR, DeepL, Azure Translator).
 
-- [x] **User Settings:**
-  - [x] Implement Target Language Selection UI (e.g., dropdown in popup).
-  - [x] Pass selected target language to Translation API call.
-  - [x] (Optional) Create basic Options page (`options/` files).
-  - [x] Use `chrome.storage.local` or `sync` to save user's target language preference.
-- [x] **Performance:**
-  - [x] Implement Caching mechanism (in-memory or `chrome.storage.local`) for OCR/Translation results on the current page.
-- [x] **UX:**
-  - [x] Implement basic Overlay Customization options (e.g., font size in options/popup).
-  - [x] Store overlay preferences in `chrome.storage`.
-  - [x] Apply custom styles to overlays in `content.js`.
+## User Experience (UX) / User Interface (UI)
 
-## Phase 3: Robustness & Flexibility
+- [ ] **Overlay Interactivity:**
+  - [ ] Add a button/action to easily copy the translated text from an overlay.
+  - [ ] Add a toggle to show/hide the original OCR'd text.
+  - [ ] Add a button/action to easily hide a specific overlay bubble.
+- [ ] **Visual Feedback During Processing:**
+  - [ ] Show a loading indicator or subtle animation on images while they are being processed.
+  - [ ] Provide visual distinction for images that failed processing.
+- [ ] **Granular Badge Notifications:** Use the extension action badge (`chrome.action`) for more detailed status (e.g., number of images processing, specific error codes briefly) instead of just "ERR".
+- [ ] **Improved Options Page:**
+  - [ ] Add live preview for overlay appearance settings.
+  - [ ] Implement a more user-friendly way to handle RGBA color + alpha (perhaps separate sliders or inputs). (Already partially done with the alpha slider, but could be refined).
+  - [ ] Add validation feedback directly next to input fields (e.g., for invalid API key format - though format is hard to validate).
+- [ ] **Enhanced Popup UI:**
+  - [ ] Show more status details in the popup (e.g., "Processing X images...", "X translations complete").
+  - [ ] Potentially add quick language selection directly in the popup.
+  - [ ] Add a link to the Options page from the popup.
+- [ ] **"Translate This Image" Context Menu:** Add a context menu item when right-clicking on an image to trigger translation for only that specific image.
+- [ ] **Hide/Show All Overlays:** Implement a toggle (perhaps in the popup or via a keyboard shortcut) to quickly hide or show all translation overlays on the page.
 
-- [ ] Add option to manually specify Source Language.
-- [ ] Investigate/improve handling of Vertical Text (check OCR API settings/results).
-- [ ] Investigate/improve handling of Stylized Fonts.
-- [ ] (Optional) Allow selection of different OCR/Translation engines (requires user API keys & options UI).
-- [ ] (Advanced) Research/implement better automatic Panel/Bubble Detection logic.
+## Performance Optimization
 
-## Phase 4: Nice-to-Haves
+- [ ] **Content Script Performance:** Optimize DOM scanning and image detection logic (`image_finder.ts`) to minimize performance impact on complex pages. Consider using `IntersectionObserver` more effectively if applicable.
+- [ ] **Image Fetching/Processing:** Investigate parallelizing API calls or using more efficient image data handling (`image_processor.ts`).
+- [ ] **Webpack Optimization:** Further optimize the build process (e.g., ensure tree-shaking is effective, explore code splitting if bundles become very large).
 
-- [ ] Implement optional Hover-to-Translate functionality (with appropriate safeguards/settings).
-- [ ] Implement Settings Sync using `chrome.storage.sync`.
-- [ ] Add feature to Save/Export/Copy translations.
+## Error Handling & Robustness
+
+- [ ] **Detailed API Error Handling:** Parse specific error messages from Google Cloud APIs and provide more informative feedback to the user (e.g., "Invalid API Key", "Quota Exceeded", "Language Not Supported").
+- [ ] **Network Error Handling:** Implement more robust handling for network failures during API calls (e.g., retries with backoff).
+- [ ] **Content Script Injection Timing:** Ensure the content script is reliably injected and ready before the background script attempts to message it. Handle "Receiving end does not exist" errors more gracefully.
+- [ ] **Handle API Quotas:** Detect and inform the user if API quotas appear to have been exceeded.
+
+## Configuration / Settings
+
+- [ ] **Font Family Selection:** Allow users to select the font family used in the translation overlays.
+- [ ] **Exclusion List:** Allow users to define websites (domains) where the extension should not automatically run or attempt image detection.
+- [ ] **Image Detection Sensitivity:** Add options to configure the minimum image size or other heuristics used for image detection.
+- [ ] **Storage Sync:** Evaluate using `chrome.storage.sync` instead of `chrome.storage.local` to sync settings across a user's logged-in Chrome instances (consider storage limits).
+
+## Code Quality & Development
+
+- [ ] **Unit/Integration Testing:** Implement a testing framework (like Jest, Vitest) and add unit tests for core logic (utils, API parsing, state management) and integration tests for message passing.
+- [ ] **Refactoring:** Continuously refactor code for clarity, maintainability, and separation of concerns.
+- [ ] **Documentation:** Add JSDoc comments to functions and modules. Expand on developer setup and architecture in the README or separate documents.
+
+## Completed / Won't Do
+
+- _(Move items here as they are completed or decided against)_
