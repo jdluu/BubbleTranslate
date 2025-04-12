@@ -49,7 +49,7 @@ export async function fetchAndProcessImage(
 	}
 	const imageBlob = await response.blob();
 	const base64ImageData = await blobToBase64(imageBlob);
-	const cleanBase64 = base64ImageData.split(",")[1]; // Remove data URL prefix
+	const cleanBase64 = base64ImageData.split(",")[1];
 
 	console.log(
 		`   [${imageId}] Image data fetched (Base64 length: ${
