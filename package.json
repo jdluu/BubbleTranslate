@@ -7,6 +7,7 @@
 		"clean": "rimraf ./dist",
 		"typecheck": "tsc --noEmit",
 		"build": "webpack --mode production",
+		"package": "rimraf ./dist && webpack --mode production && bestzip ./dist/bubbletranslate.zip ./dist/*",
 		"dev": "webpack --mode development",
 		"watch": "webpack --mode development --watch"
 	},
