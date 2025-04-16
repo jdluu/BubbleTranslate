@@ -40,8 +40,8 @@ This document outlines potential improvements, new features, and bug fixes plann
 
 ## Error Handling & Robustness
 
-- [ ] **Detailed API Error Handling:** Parse specific error messages from Google Cloud APIs and provide more informative feedback to the user (e.g., "Invalid API Key", "Quota Exceeded", "Language Not Supported").
-- [ ] **Network Error Handling:** Implement more robust handling for network failures during API calls (e.g., retries with backoff).
+- [x] **Detailed API Error Handling:** Parse specific error messages from Google Cloud APIs and provide more informative feedback to the user (e.g., "Invalid API Key", "Quota Exceeded", "Language Not Supported").
+- [x] **Network Error Handling:** Implement more robust handling for network failures during API calls (e.g., retries with backoff).
 - [ ] **Content Script Injection Timing:** Ensure the content script is reliably injected and ready before the background script attempts to message it. Handle "Receiving end does not exist" errors more gracefully.
 - [ ] **Handle API Quotas:** Detect and inform the user if API quotas appear to have been exceeded.
 
