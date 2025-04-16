@@ -13,12 +13,13 @@ import { isSerializedApiClientError } from "@shared/types"; // Type guard for er
 import { findPotentialMangaImages } from "@features/page_interaction/image_finder";
 import {
 	displayBlockOverlay, // Displays SUCCESS overlay
-	displayErrorOverlay, // Displays ERROR overlay (NEEDS UPDATE for structured error)
+	displayErrorOverlay, // Displays ERROR overlay
 	loadAndApplyStyleSettings,
 	clearOverlaysForImage, // Utility to clear previous overlays if needed
 } from "@features/page_interaction/overlay_manager";
 
-console.log("BubbleTranslate Content: Script Loaded!");
+// --- Early console log to indicate script start ---
+console.log("BubbleTranslate Content: Script executing.");
 
 // --- Globals ---
 let uniqueIdCounter = 0; // Counter for generating unique IDs for images found in this session
@@ -29,6 +30,7 @@ let isAnalysisRunning = false; // Simple flag to prevent concurrent analysis run
 // ============================================================================
 
 // Load initial styles and listen for future changes
+// This runs asynchronously but doesn't block listener setup
 loadAndApplyStyleSettings();
 chrome.storage.onChanged.addListener((changes, areaName) => {
 	if (
@@ -41,7 +43,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
 	}
 });
 
-// Listen for messages from the background script or popup
+// --- Setup message listener immediately at the top level ---
 chrome.runtime.onMessage.addListener(
 	(
 		message: ContentScriptMessage | any, // Use 'any' for initial check
@@ -57,9 +59,9 @@ chrome.runtime.onMessage.addListener(
 			return false; // Indicate synchronous handling or ignore
 		}
 
+		// Log received messages *after* sender check
 		console.log(
-			"BubbleTranslate Content: Received message:",
-			message.action
+			`BubbleTranslate Content: Received message: ${message.action}`
 			// message // Log full message only if debugging
 		);
 
@@ -72,40 +74,41 @@ chrome.runtime.onMessage.addListener(
 					console.warn(
 						"BubbleTranslate Content: Analysis already running, ignoring trigger."
 					);
+					// Ensure a response is sent even if ignoring
 					sendResponse({
 						status: "error",
 						error: "Analysis already in progress.",
 						foundCount: 0,
+						sentCount: 0,
 					});
 					return false; // Handled synchronously
 				}
 				isAnalysisRunning = true; // Set flag
 				// Reload styles just before analysis, ensuring freshness
 				loadAndApplyStyleSettings();
-				// Use try/finally to ensure flag is reset
+				// Use try/finally to ensure flag is reset safely
 				try {
+					// handlePageAnalysis now handles calling sendResponse
 					handlePageAnalysis(sendResponse);
 				} catch (e) {
-					// This catch is for synchronous errors within handlePageAnalysis setup itself
+					// This catch is for immediate, synchronous errors in handlePageAnalysis setup itself
 					console.error(
-						"BubbleTranslate Content: Immediate error in handlePageAnalysis:",
+						"BubbleTranslate Content: Immediate error during handlePageAnalysis trigger:",
 						e
 					);
 					sendResponse({
 						status: "error",
-						error: e instanceof Error ? e.message : "Unknown sync error",
+						error:
+							e instanceof Error
+								? e.message
+								: "Unknown content script setup error",
 						foundCount: 0,
+						sentCount: 0,
 					});
 					isAnalysisRunning = false; // Reset flag on sync error
-				} finally {
-					// Reset flag after handlePageAnalysis calls sendResponse (async or sync)
-					// Note: If handlePageAnalysis itself becomes fully async, flag reset needs care
-					// For now, assuming sendResponse is called relatively quickly.
-					// A better approach might involve promises from handlePageAnalysis.
-					setTimeout(() => {
-						isAnalysisRunning = false;
-					}, 500); // Simple timeout fallback
+					return false; // Error occurred synchronously
 				}
+				// If no synchronous error, handlePageAnalysis will call sendResponse later
 				return true; // Indicate sendResponse will be called asynchronously by handlePageAnalysis
 
 			case "displayBlockTranslation":
@@ -143,7 +146,6 @@ chrome.runtime.onMessage.addListener(
 
 					if (isSerializedApiClientError(errorMsg.error)) {
 						// If it's a structured API error, extract user-friendly message
-						// (This logic might live inside displayErrorOverlay eventually)
 						errorDetails = errorMsg.error;
 						if (errorDetails.isAuthError) {
 							displayMessage = `Auth Error: Check API Key. (${errorDetails.apiName})`;
@@ -197,6 +199,7 @@ chrome.runtime.onMessage.addListener(
 	}
 );
 
+// --- Log after listener is added ---
 console.log("BubbleTranslate Content: Message listener added.");
 
 // ============================================================================
@@ -223,11 +226,23 @@ function handlePageAnalysis(
 			`BubbleTranslate Content: Found ${imagesFoundCount} potential images.`
 		);
 
+		if (imagesFoundCount === 0) {
+			// If no images found, respond immediately and reset flag
+			console.log("BubbleTranslate Content: No images found. Responding.");
+			sendResponse({
+				status: "noImagesFound",
+				foundCount: 0,
+				sentCount: 0,
+			});
+			isAnalysisRunning = false; // Reset flag here for this specific path
+			return; // Exit early
+		}
+
+		// Process found images
 		images.forEach((img: HTMLImageElement) => {
+			// Assign ID and clear overlays within the loop for each image processed
 			try {
 				const existingId = img.getAttribute(UNIQUE_ID_ATTR);
-				// Ensure image hasn't been processed already *in this specific analysis run*
-				// or assign a new ID if it doesn't have one
 				let imageId: string;
 				if (!existingId) {
 					imageId = `bt-${Date.now()}-${uniqueIdCounter++}`;
@@ -236,9 +251,9 @@ function handlePageAnalysis(
 					imageId = existingId;
 				}
 
-				// Only send if not already sent in this run
+				// Only process if not already sent in this run
 				if (!sentImageIds.has(imageId)) {
-					// Clear any previous overlays associated with this image before re-processing
+					// Clear any previous overlays for this image before sending for processing
 					clearOverlaysForImage(imageId);
 
 					const message: ProcessImageMessage = {
@@ -248,21 +263,23 @@ function handlePageAnalysis(
 						imageElementId: img.id || undefined, // Send element ID if it exists
 					};
 
-					// console.log(`BubbleTranslate Content: Sending image [${imageId}]`); // Reduce noise
-					sendMessageToBackground(message)
-						.then(() => {
-							sentImageIds.add(imageId); // Mark as sent *after* successful send
-						})
-						.catch((error: Error) => {
-							// Handle potential error during send itself (less common, maybe background closed)
+					// Use an IIFE to handle async sendMessage without blocking the loop
+					(async () => {
+						try {
+							await sendMessageToBackground(message);
+							sentImageIds.add(imageId); // Mark as sent only on success
+						} catch (error: any) {
+							// Handle potential error during send itself
 							console.error(
 								`BubbleTranslate Content: Error sending message for image [${imageId}]:`,
 								error
 							);
-							// Don't count as sent, maybe record as pageAnalysisError?
-							pageAnalysisError = pageAnalysisError || error;
-						});
-					imagesSentCount++; // Increment optimistic count (actual success is async)
+							// Record the first sending error encountered
+							if (!pageAnalysisError) pageAnalysisError = error;
+						}
+					})(); // Immediately invoke async function
+
+					imagesSentCount++; // Increment optimistic count
 				}
 			} catch (taggingError: any) {
 				console.error(
@@ -272,44 +289,70 @@ function handlePageAnalysis(
 					)}...:`,
 					taggingError
 				);
-				// Record the first error encountered during iteration
-				pageAnalysisError = pageAnalysisError || taggingError;
+				// Record the first tagging error encountered
+				if (!pageAnalysisError) pageAnalysisError = taggingError;
 			}
-		});
+		}); // End of images.forEach
+
+		// --- Response Logic ---
+		// Since sending messages is async, we need to wait slightly or use a counter
+		// to determine when to respond. A simple timeout is often sufficient for user actions.
+		// A more robust solution might involve Promises, but let's stick to a timeout for now.
+
+		const checkCompletionInterval = 100; // ms
+		const maxWaitTime = 5000; // ms (5 seconds max wait)
+		let timeWaited = 0;
+
+		const intervalId = setInterval(() => {
+			timeWaited += checkCompletionInterval;
+			// Check if all optimistic sends have resolved (either success or logged error)
+			// or if a major error occurred, or max wait time exceeded.
+			// Using sentImageIds.size vs imagesSentCount accounts for send errors.
+			if (
+				pageAnalysisError ||
+				sentImageIds.size === imagesSentCount ||
+				timeWaited >= maxWaitTime
+			) {
+				clearInterval(intervalId); // Stop checking
+
+				const finalSentCount = sentImageIds.size; // Actual successful/attempted sends
+				console.log(
+					`BubbleTranslate Content: Analysis response check complete. Sent: ${finalSentCount}/${imagesSentCount}. Error: ${pageAnalysisError?.message}`
+				);
+
+				if (pageAnalysisError) {
+					sendResponse({
+						status: "error",
+						error:
+							pageAnalysisError.message ||
+							"Unknown content script error during analysis/send",
+						foundCount: imagesFoundCount,
+						sentCount: finalSentCount,
+					});
+				} else {
+					// If no errors, respond with processing status
+					sendResponse({
+						status: "processingImages",
+						foundCount: imagesFoundCount,
+						sentCount: finalSentCount, // Report the count sent successfully
+					});
+				}
+				isAnalysisRunning = false; // Reset flag after response is sent
+			}
+		}, checkCompletionInterval);
 	} catch (findError: any) {
+		// Catch errors during the initial findPotentialMangaImages call
 		console.error(
-			"BubbleTranslate Content: Error during image finding:",
+			"BubbleTranslate Content: Error during image finding phase:",
 			findError
 		);
-		pageAnalysisError = findError;
-	} finally {
-		// Use the optimistic count for immediate feedback
-		const finalSentCount = imagesSentCount;
-		console.log(
-			`BubbleTranslate Content: Analysis finished. Attempting to send ${finalSentCount} images.`
-		);
-		if (pageAnalysisError) {
-			sendResponse({
-				status: "error",
-				error:
-					pageAnalysisError.message ||
-					"Unknown content script error during analysis",
-				foundCount: imagesFoundCount,
-				sentCount: finalSentCount,
-			});
-		} else if (imagesFoundCount === 0) {
-			sendResponse({
-				status: "noImagesFound",
-				foundCount: 0,
-				sentCount: 0,
-			});
-		} else {
-			sendResponse({
-				status: "processingImages",
-				foundCount: imagesFoundCount,
-				sentCount: finalSentCount, // Report the count sent
-			});
-		}
-		// Flag reset is handled in the listener's finally block
+		sendResponse({
+			status: "error",
+			error: findError.message || "Error finding images on page",
+			foundCount: 0,
+			sentCount: 0,
+		});
+		isAnalysisRunning = false; // Reset flag
 	}
+	// Note: The `finally` block was removed as response/flag reset is handled within try/catch paths now
 }
