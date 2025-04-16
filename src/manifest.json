@@ -30,7 +30,8 @@
 		{
 			"matches": ["<all_urls>"],
 			"js": ["content.bundle.js"],
-			"css": ["features/page_interaction/content.css"]
+			"css": ["features/page_interaction/content.css"],
+			"run_at": "document_idle"
 		}
 	],
 
